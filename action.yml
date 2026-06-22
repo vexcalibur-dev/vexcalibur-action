@@ -1,0 +1,36 @@
+name: Vexcalibur
+description: Run Vexcalibur in GitHub Actions workflows.
+
+inputs:
+  package-spec:
+    description: Package spec passed to pipx install.
+    required: false
+    default: vexcalibur
+  python-version:
+    description: Python version used to install and run Vexcalibur.
+    required: false
+    default: "3.14"
+  command:
+    description: Command to run. Supported values are help and query-osv.
+    required: false
+    default: help
+  purls:
+    description: Newline-separated package URLs for query-osv.
+    required: false
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - name: Set up Python
+      uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+      with:
+        python-version: ${{ inputs.python-version }}
+
+    - name: Run Vexcalibur
+      shell: bash
+      env:
+        VEXCALIBUR_PACKAGE_SPEC: ${{ inputs.package-spec }}
+        VEXCALIBUR_COMMAND: ${{ inputs.command }}
+        VEXCALIBUR_PURLS: ${{ inputs.purls }}
+      run: '"$GITHUB_ACTION_PATH/scripts/run-vexcalibur.sh"'
