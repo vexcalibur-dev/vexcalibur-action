@@ -40,8 +40,8 @@ class RunVexcaliburScriptTests(unittest.TestCase):
                     "VEXCALIBUR_BIN": str(fake_vexcalibur),
                     "VEXCALIBUR_COMMAND": "query-osv",
                     "VEXCALIBUR_PURLS": (
-                        "pkg:pypi/django@1.2\n"
-                        "\n"
+                        "  pkg:pypi/django@1.2  \n"
+                        " \t \n"
                         "pkg:npm/minimist@0.0.8\r\n"
                     ),
                     "VEXCALIBUR_SKIP_INSTALL": "true",
@@ -124,9 +124,8 @@ def _write_fake_vexcalibur(tmpdir: Path, calls_file: Path) -> Path:
     fake_vexcalibur.write_text(
         "\n".join(
             [
-                "#!/usr/bin/env python3",
+                f"#!{sys.executable}",
                 "from pathlib import Path",
-                "import os",
                 "import sys",
                 f"Path({str(calls_file)!r}).write_text('\\n'.join(sys.argv[1:]) + '\\n')",
             ]

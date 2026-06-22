@@ -12,6 +12,8 @@ read_purl_args() {
   purl_args=()
   while IFS= read -r purl_line || [[ -n "$purl_line" ]]; do
     purl_line="${purl_line%$'\r'}"
+    purl_line="${purl_line#"${purl_line%%[![:space:]]*}"}"
+    purl_line="${purl_line%"${purl_line##*[![:space:]]}"}"
     if [[ -n "$purl_line" ]]; then
       purl_args+=("$purl_line")
     fi
