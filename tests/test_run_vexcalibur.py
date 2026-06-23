@@ -39,7 +39,11 @@ class RunVexcaliburScriptTests(unittest.TestCase):
                 {
                     "VEXCALIBUR_BIN": str(fake_vexcalibur),
                     "VEXCALIBUR_COMMAND": "query-osv",
-                    "VEXCALIBUR_PURLS": "pkg:pypi/django@1.2\npkg:npm/minimist@0.0.8",
+                    "VEXCALIBUR_PURLS": (
+                        "  pkg:pypi/django@1.2  \n"
+                        " \t \n"
+                        "pkg:npm/minimist@0.0.8\r\n"
+                    ),
                     "VEXCALIBUR_SKIP_INSTALL": "true",
                 }
             )
@@ -54,6 +58,7 @@ class RunVexcaliburScriptTests(unittest.TestCase):
         result = _run_script(
             {
                 "VEXCALIBUR_COMMAND": "query-osv",
+                "VEXCALIBUR_PURLS": "\n\r\n",
                 "VEXCALIBUR_SKIP_INSTALL": "true",
             }
         )
@@ -71,6 +76,33 @@ class RunVexcaliburScriptTests(unittest.TestCase):
 
         self.assertEqual(result.returncode, 2)
         self.assertIn("unsupported command: unknown", result.stderr)
+
+    def test_pipx_managed_bin_is_preferred_to_path(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            home = root / "home"
+            path_dir = root / "path"
+            managed_calls = root / "managed-calls.txt"
+            path_calls = root / "path-calls.txt"
+            managed_bin = home / ".local" / "bin"
+
+            managed_bin.mkdir(parents=True)
+            path_dir.mkdir()
+            _write_fake_vexcalibur(managed_bin, managed_calls)
+            _write_fake_vexcalibur(path_dir, path_calls)
+
+            result = _run_script(
+                {
+                    "HOME": str(home),
+                    "PATH": f"{path_dir}{os.pathsep}{os.environ['PATH']}",
+                    "VEXCALIBUR_COMMAND": "help",
+                    "VEXCALIBUR_SKIP_INSTALL": "true",
+                }
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(managed_calls.read_text(), "--help\n")
+            self.assertFalse(path_calls.exists())
 
 
 def _run_script(extra_env: dict[str, str]) -> subprocess.CompletedProcess[str]:
@@ -92,9 +124,8 @@ def _write_fake_vexcalibur(tmpdir: Path, calls_file: Path) -> Path:
     fake_vexcalibur.write_text(
         "\n".join(
             [
-                "#!/usr/bin/env python3",
+                f"#!{sys.executable}",
                 "from pathlib import Path",
-                "import os",
                 "import sys",
                 f"Path({str(calls_file)!r}).write_text('\\n'.join(sys.argv[1:]) + '\\n')",
             ]
