@@ -3,9 +3,12 @@ description: Run Vexcalibur in GitHub Actions workflows.
 
 inputs:
   package-spec:
-    description: Package spec passed to pipx install.
+    description: Exact Vexcalibur package spec passed to pip install.
+    required: true
+  allow-development-package-spec:
+    description: Allow non-release package specs such as Git URLs. Use only for development workflows.
     required: false
-    default: vexcalibur
+    default: "false"
   python-version:
     description: Python version used to install and run Vexcalibur.
     required: false
@@ -15,22 +18,32 @@ inputs:
     required: false
     default: help
   purls:
-    description: Newline-separated package URLs for query-osv.
+    description: Newline-separated package URLs. Required when command is query-osv; blank lines are ignored.
     required: false
     default: ""
+  allow-public-osv:
+    description: Required when command is query-osv. Allows the action to send package URLs to the public OSV API.
+    required: false
+    default: "false"
 
 runs:
   using: composite
   steps:
     - name: Set up Python
+      id: setup-python
       uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
       with:
         python-version: ${{ inputs.python-version }}
 
     - name: Run Vexcalibur
-      shell: bash
+      shell: /bin/bash --noprofile --norc -e -o pipefail {0}
+      working-directory: ${{ runner.temp }}
       env:
+        BASH_ENV: ""
+        VEXCALIBUR_PYTHON: ${{ steps.setup-python.outputs.python-path }}
         VEXCALIBUR_PACKAGE_SPEC: ${{ inputs.package-spec }}
+        VEXCALIBUR_ALLOW_DEVELOPMENT_PACKAGE_SPEC: ${{ inputs.allow-development-package-spec }}
         VEXCALIBUR_COMMAND: ${{ inputs.command }}
         VEXCALIBUR_PURLS: ${{ inputs.purls }}
+        VEXCALIBUR_ALLOW_PUBLIC_OSV: ${{ inputs.allow-public-osv }}
       run: '"$GITHUB_ACTION_PATH/scripts/run-vexcalibur.sh"'

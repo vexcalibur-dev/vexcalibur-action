@@ -7,6 +7,7 @@ Vexcalibur Action is pre-alpha. Keep action inputs narrow until the Vexcalibur p
 Run local checks from the repository root:
 
 ```bash
+python -m pip install -r requirements-dev.txt
 bash -n scripts/run-vexcalibur.sh
 python -m unittest discover -s tests
 ```
