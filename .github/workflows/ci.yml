@@ -7,7 +7,8 @@ on:
     branches: [main]
   workflow_dispatch:
 
-permissions: read-all
+permissions:
+  contents: read
 
 jobs:
   quality:
@@ -22,12 +23,14 @@ jobs:
         with:
           python-version: "3.14"
 
+      - name: Install development dependencies
+        run: python -m pip install -r requirements-dev.txt
+
       - name: Validate shell
         run: bash -n scripts/run-vexcalibur.sh
 
       - name: Validate YAML and JSON
         run: |
-          python -m pip install pyyaml
           python - <<'PY'
           from pathlib import Path
           import json
@@ -63,25 +66,17 @@ jobs:
       - name: Run local action
         uses: ./
         with:
-          package-spec: git+https://github.com/vexcalibur-dev/vexcalibur.git@main
+          package-spec: git+https://github.com/vexcalibur-dev/vexcalibur.git@cc9506fc451bed1a5658a53cee4eaf7174505514
+          allow-development-package-spec: "true"
           command: help
-
-      - name: Create fake Vexcalibur executable
-        run: |
-          mkdir -p "$RUNNER_TEMP/vexcalibur-bin"
-          cat > "$RUNNER_TEMP/vexcalibur-bin/vexcalibur" <<'SH'
-          #!/usr/bin/env bash
-          printf '%s\n' "$@" > "$RUNNER_TEMP/vexcalibur-query-args.txt"
-          SH
-          chmod +x "$RUNNER_TEMP/vexcalibur-bin/vexcalibur"
 
       - name: Run local action query-osv path
         uses: ./
-        env:
-          VEXCALIBUR_BIN: ${{ runner.temp }}/vexcalibur-bin/vexcalibur
-          VEXCALIBUR_SKIP_INSTALL: "true"
         with:
+          package-spec: ${{ github.workspace }}/tests/fixtures/fake-vexcalibur
+          allow-development-package-spec: "true"
           command: query-osv
+          allow-public-osv: "true"
           purls: |
             pkg:pypi/django@1.2
 
@@ -91,6 +86,8 @@ jobs:
         run: |
           cat > "$RUNNER_TEMP/expected-vexcalibur-query-args.txt" <<'EOF'
           query-osv
+          --allow-public-osv
+          --
           pkg:pypi/django@1.2
           pkg:npm/minimist@0.0.8
           EOF

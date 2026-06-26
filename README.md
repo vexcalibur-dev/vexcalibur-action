@@ -1,53 +1,122 @@
 # Vexcalibur Action
 
-GitHub Action wrapper for Vexcalibur.
+GitHub Action wrapper for [Vexcalibur](https://github.com/vexcalibur-dev/vexcalibur).
 
-This repository is pre-alpha. The action currently installs the Vexcalibur Python package and exposes a small command surface for CI workflows. Broader VEX generation and legacy `vexy` compatibility will land in the package first, then this action will expose stable workflow inputs.
+This repository is pre-alpha. Use the development workflow below only for testing the
+action before the first Vexcalibur package release. Production workflows should wait
+for a trusted action release commit and an exact PyPI package release.
 
-## Usage
+## Development Quick Start
 
-Show the installed Vexcalibur help:
+This is the runnable pre-release path validated by this repository's CI after these
+docs are merged to `main`. If you are testing an unmerged PR, replace `@main` with
+the PR branch or full action commit SHA you are validating. This path uses the mutable
+action branch and a pinned Vexcalibur Git commit, so it is appropriate for development
+smoke tests only.
 
 ```yaml
-- uses: vexcalibur-dev/vexcalibur-action@v0
+name: Vexcalibur
+
+on:
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  vexcalibur:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: vexcalibur-dev/vexcalibur-action@main
+        with:
+          package-spec: git+https://github.com/vexcalibur-dev/vexcalibur.git@cc9506fc451bed1a5658a53cee4eaf7174505514
+          allow-development-package-spec: "true"
+          command: help
+```
+
+Save that as `.github/workflows/vexcalibur.yml` in a test repository. The
+successful result is a passing workflow with Vexcalibur help output in the action
+logs.
+
+Querying public OSV sends package URLs to the public OSV service. Set
+`allow-public-osv` only when that data sharing is acceptable for the workflow. This
+action requires `allow-public-osv: "true"` for `query-osv` until a private source
+input exists.
+
+```yaml
+name: Vexcalibur OSV Query
+
+on:
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  vexcalibur:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: vexcalibur-dev/vexcalibur-action@main
+        with:
+          package-spec: git+https://github.com/vexcalibur-dev/vexcalibur.git@cc9506fc451bed1a5658a53cee4eaf7174505514
+          allow-development-package-spec: "true"
+          command: query-osv
+          allow-public-osv: "true"
+          purls: |
+            pkg:pypi/django@1.2
+            pkg:npm/minimist@0.0.8
+```
+
+## Release Usage
+
+These examples describe the intended stable interface, but they are not runnable until
+Vexcalibur publishes its first PyPI package and this action publishes a release.
+Replace `ACTION_RELEASE_COMMIT_SHA` with the full action commit SHA for the release.
+Release workflows should pin both the action and the package to trusted versions.
+
+```yaml
+- uses: vexcalibur-dev/vexcalibur-action@ACTION_RELEASE_COMMIT_SHA
   with:
+    package-spec: vexcalibur==0.1.0
     command: help
 ```
 
-Query OSV for package URLs:
-
 ```yaml
-- uses: vexcalibur-dev/vexcalibur-action@v0
+- uses: vexcalibur-dev/vexcalibur-action@ACTION_RELEASE_COMMIT_SHA
   with:
+    package-spec: vexcalibur==0.1.0
     command: query-osv
+    allow-public-osv: "true"
     purls: |
       pkg:pypi/django@1.2
       pkg:npm/minimist@0.0.8
-```
-
-Until Vexcalibur has published releases, test workflows can install from Git:
-
-```yaml
-- uses: vexcalibur-dev/vexcalibur-action@main
-  with:
-    package-spec: git+https://github.com/vexcalibur-dev/vexcalibur.git@main
-    command: help
 ```
 
 ## Inputs
 
 | Input | Default | Description |
 | --- | --- | --- |
-| `package-spec` | `vexcalibur` | Package spec passed to `pipx install`. |
+| `package-spec` | required | Exact Vexcalibur package spec passed to `pip install`. Release workflows should use a pinned spec such as `vexcalibur==0.1.0`. |
+| `allow-development-package-spec` | `false` | Allows non-release package specs such as Git URLs. Use only in development workflows. |
 | `python-version` | `3.14` | Python version used to install and run Vexcalibur. |
 | `command` | `help` | Supported values: `help`, `query-osv`. |
-| `purls` | empty | Newline-separated package URLs for `query-osv`. |
+| `purls` | empty | Newline-separated package URLs. Required when `command` is `query-osv`; blank lines are ignored. |
+| `allow-public-osv` | `false` | Required when `command` is `query-osv`. Allows the action to send package URLs to the public OSV API. |
+
+## Runtime Behavior
+
+By default, the action requires an exact `vexcalibur==...` package spec and runs the
+binary installed into its private virtual environment. Non-release package specs
+require `allow-development-package-spec: "true"`.
+
+The action does not honor caller-provided executable paths. Tests that need a fake
+Vexcalibur command should provide a local package spec and let the action install it
+through the same managed virtual environment used by normal workflows.
 
 ## Development
 
 Run local checks:
 
 ```bash
+python -m pip install -r requirements-dev.txt
 bash -n scripts/run-vexcalibur.sh
 python -m unittest discover -s tests
 ```
