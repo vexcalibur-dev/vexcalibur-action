@@ -92,24 +92,20 @@ Release workflows should pin both the action and the package to trusted versions
 
 ## Inputs
 
-| Input | Default | Description |
-| --- | --- | --- |
-| `package-spec` | required | Exact Vexcalibur package spec passed to `pip install`. Release workflows should use a pinned spec such as `vexcalibur==0.1.0`. |
-| `allow-development-package-spec` | `false` | Allows non-release package specs such as Git URLs. Use only in development workflows. |
-| `python-version` | `3.14` | Python version used to install and run Vexcalibur. |
-| `command` | `help` | Supported values: `help`, `query-osv`. |
-| `purls` | empty | Newline-separated package URLs. Required when `command` is `query-osv`; blank lines are ignored. |
-| `allow-public-osv` | `false` | Required when `command` is `query-osv`. Allows the action to send package URLs to the public OSV API. |
+See the [action reference](docs/reference/action.md) for inputs, defaults,
+supported commands, output behavior, exit behavior, and verification commands.
 
 ## Runtime Behavior
 
-By default, the action requires an exact `vexcalibur==...` package spec and runs the
-binary installed into its private virtual environment. Non-release package specs
-require `allow-development-package-spec: "true"`.
+By default, the action requires an exact `vexcalibur==...` package spec and runs
+the binary installed into its private virtual environment. Non-release package
+specs require `allow-development-package-spec: "true"`.
 
-The action does not honor caller-provided executable paths. Tests that need a fake
-Vexcalibur command should provide a local package spec and let the action install it
-through the same managed virtual environment used by normal workflows.
+The action does not honor caller-provided executable paths. Tests that need a
+fake Vexcalibur command should provide a local package spec and let the action
+install it through the same managed virtual environment used by normal
+workflows. See [action reference](docs/reference/action.md) for the full runtime
+contract.
 
 ## Development
 
@@ -123,6 +119,7 @@ python -m unittest discover -s tests
 
 ## Project Links
 
+- [Action reference](docs/reference/action.md)
 - [Security policy](SECURITY.md)
 - [Contributing](CONTRIBUTING.md)
 - [License](LICENSE)
