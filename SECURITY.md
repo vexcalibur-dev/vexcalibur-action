@@ -2,12 +2,22 @@
 
 ## Reporting Vulnerabilities
 
-Please report security issues privately.
+Vexcalibur Action follows the shared `vexcalibur-dev` security policy:
 
-Use GitHub private vulnerability reporting if it is enabled for this repository. If private reporting is unavailable, contact the maintainers before publishing details.
+<https://github.com/vexcalibur-dev/.github/security/policy>
 
-Do not open public issues for vulnerabilities until maintainers have confirmed an appropriate disclosure path.
+Use GitHub private vulnerability reporting for Vexcalibur Action vulnerabilities:
+
+<https://github.com/vexcalibur-dev/vexcalibur-action/security/advisories/new>
+
+Do not open public issues with vulnerabilities, exploit details, secrets,
+tokens, private package data, affected package names, logs, stack traces,
+screenshots, reproduction steps, or other sensitive evidence. If GitHub private
+vulnerability reporting is unavailable, use the private disclosure channel
+request issue form in this repository and include no sensitive details.
 
 ## Supported Versions
 
-Vexcalibur Action is currently pre-alpha. Security fixes should target the default branch until versioned releases are published.
+Vexcalibur Action is currently pre-alpha. Security fixes target the default
+branch until versioned releases are published. After releases begin, this policy
+must document which release lines receive security fixes.
