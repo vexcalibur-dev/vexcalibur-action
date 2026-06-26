@@ -1,5 +1,11 @@
 # Vexcalibur Action
 
+[![CI](https://github.com/vexcalibur-dev/vexcalibur-action/actions/workflows/ci.yml/badge.svg)](https://github.com/vexcalibur-dev/vexcalibur-action/actions/workflows/ci.yml)
+[![OpenSSF Scorecard](https://github.com/vexcalibur-dev/vexcalibur-action/actions/workflows/scorecard.yml/badge.svg)](https://github.com/vexcalibur-dev/vexcalibur-action/actions/workflows/scorecard.yml)
+[![Dependency Review](https://github.com/vexcalibur-dev/vexcalibur-action/actions/workflows/dependency-review.yml/badge.svg)](https://github.com/vexcalibur-dev/vexcalibur-action/actions/workflows/dependency-review.yml)
+
+![](docs/assets/vexcalibur-banner.png)
+
 GitHub Action wrapper for [Vexcalibur](https://github.com/vexcalibur-dev/vexcalibur).
 
 This repository is pre-alpha. Use the development workflow below only for testing the
