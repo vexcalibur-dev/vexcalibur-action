@@ -8,9 +8,17 @@
 
 GitHub Action wrapper for [Vexcalibur](https://github.com/vexcalibur-dev/vexcalibur).
 
-This repository is pre-alpha. Use the development workflow below only for testing the
-action before the first Vexcalibur package release. Production workflows should wait
-for a trusted action release commit and an exact PyPI package release.
+The action is usable for development and compatibility testing today. Stable
+production workflows should wait for a trusted action release commit and an
+exact Vexcalibur package release.
+
+Current workflows:
+
+- Run Vexcalibur help and package URL queries in CI.
+- Generate CycloneDX 1.6 VEX JSON from SBOMs with local findings or
+  OSV-compatible providers.
+- Validate the action/package boundary against a wheel built from
+  `vexcalibur-dev/vexcalibur@main`.
 
 ## Development Quick Start
 
@@ -104,6 +112,13 @@ current action tag and package version policy.
 See the [action reference](docs/reference/action.md) for inputs, defaults,
 argument handling, output behavior, exit behavior, and verification commands.
 
+## SBOM-To-VEX Workflows
+
+Use [Generate VEX from an SBOM](docs/how-to/generate-vex-from-sbom.md) for a
+runnable CI workflow that checks out repository fixtures, runs
+`vexcalibur generate`, writes a CycloneDX VEX JSON artifact, and uploads it with
+`actions/upload-artifact`.
+
 ## Runtime Behavior
 
 By default, the action requires an exact `vexcalibur==...` package spec and runs
@@ -129,6 +144,7 @@ python -m unittest discover -s tests
 ## Project Links
 
 - [Action reference](docs/reference/action.md)
+- [Generate VEX from an SBOM](docs/how-to/generate-vex-from-sbom.md)
 - [Compatibility reference](docs/reference/compatibility.md)
 - [Security policy](SECURITY.md)
 - [Contributing](CONTRIBUTING.md)
