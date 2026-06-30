@@ -4,7 +4,7 @@
 [![OpenSSF Scorecard](https://github.com/vexcalibur-dev/vexcalibur-action/actions/workflows/scorecard.yml/badge.svg)](https://github.com/vexcalibur-dev/vexcalibur-action/actions/workflows/scorecard.yml)
 [![Dependency Review](https://github.com/vexcalibur-dev/vexcalibur-action/actions/workflows/dependency-review.yml/badge.svg)](https://github.com/vexcalibur-dev/vexcalibur-action/actions/workflows/dependency-review.yml)
 
-![](docs/assets/vexcalibur-banner.png)
+![Vexcalibur wordmark and sword logo](docs/assets/vexcalibur-banner.png)
 
 GitHub Action wrapper for [Vexcalibur](https://github.com/vexcalibur-dev/vexcalibur).
 
@@ -36,17 +36,16 @@ jobs:
         with:
           package-spec: git+https://github.com/vexcalibur-dev/vexcalibur.git@cc9506fc451bed1a5658a53cee4eaf7174505514
           allow-development-package-spec: "true"
-          command: help
+          args: --help
 ```
 
 Save that as `.github/workflows/vexcalibur.yml` in a test repository. The
 successful result is a passing workflow with Vexcalibur help output in the action
 logs.
 
-Querying public OSV sends package URLs to the public OSV service. Set
-`allow-public-osv` only when that data sharing is acceptable for the workflow. This
-action requires `allow-public-osv: "true"` for `query-osv` until a private source
-input exists.
+OSV-backed Vexcalibur commands can send package URLs, versions, or
+SBOM-derived inventory to the public OSV service. Pass `--allow-public-osv`
+only when that data sharing is acceptable for the workflow.
 
 ```yaml
 name: Vexcalibur OSV Query
@@ -64,9 +63,10 @@ jobs:
         with:
           package-spec: git+https://github.com/vexcalibur-dev/vexcalibur.git@cc9506fc451bed1a5658a53cee4eaf7174505514
           allow-development-package-spec: "true"
-          command: query-osv
-          allow-public-osv: "true"
-          purls: |
+          args: |
+            query-osv
+            --allow-public-osv
+            --
             pkg:pypi/django@1.2
             pkg:npm/minimist@0.0.8
 ```
@@ -82,16 +82,17 @@ Release workflows should pin both the action and the package to trusted versions
 - uses: vexcalibur-dev/vexcalibur-action@ACTION_RELEASE_COMMIT_SHA
   with:
     package-spec: vexcalibur==0.1.0
-    command: help
+    args: --help
 ```
 
 ```yaml
 - uses: vexcalibur-dev/vexcalibur-action@ACTION_RELEASE_COMMIT_SHA
   with:
     package-spec: vexcalibur==0.1.0
-    command: query-osv
-    allow-public-osv: "true"
-    purls: |
+    args: |
+      query-osv
+      --allow-public-osv
+      --
       pkg:pypi/django@1.2
       pkg:npm/minimist@0.0.8
 ```
@@ -99,7 +100,7 @@ Release workflows should pin both the action and the package to trusted versions
 ## Inputs
 
 See the [action reference](docs/reference/action.md) for inputs, defaults,
-supported commands, output behavior, exit behavior, and verification commands.
+argument handling, output behavior, exit behavior, and verification commands.
 
 ## Runtime Behavior
 

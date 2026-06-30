@@ -3,21 +3,23 @@ set -euo pipefail
 
 package_spec="${VEXCALIBUR_PACKAGE_SPEC:-}"
 allow_development_package_spec="${VEXCALIBUR_ALLOW_DEVELOPMENT_PACKAGE_SPEC:-false}"
-command_name="${VEXCALIBUR_COMMAND:-help}"
-purls="${VEXCALIBUR_PURLS:-}"
-allow_public_osv="${VEXCALIBUR_ALLOW_PUBLIC_OSV:-false}"
+if [[ -v VEXCALIBUR_ARGS ]]; then
+  raw_cli_args="$VEXCALIBUR_ARGS"
+else
+  raw_cli_args="--help"
+fi
 runner_temp="${RUNNER_TEMP:-}"
 python_bin="${VEXCALIBUR_PYTHON:-}"
-purl_args=()
+cli_args=()
 action_work_dir=""
 pip_cache_dir=""
 venv_dir=""
 venv_python=""
 vexcalibur_bin=""
 
-export -n package_spec allow_development_package_spec command_name purls allow_public_osv
+export -n package_spec allow_development_package_spec raw_cli_args
 export -n runner_temp python_bin action_work_dir pip_cache_dir venv_dir venv_python vexcalibur_bin
-unset VEXCALIBUR_PURLS
+unset VEXCALIBUR_ARGS VEXCALIBUR_PURLS args purls
 
 is_true() {
   [[ "$1" == "true" ]]
@@ -53,17 +55,15 @@ validate_package_spec() {
   exit 2
 }
 
-read_purl_args() {
-  local purl_line
-  purl_args=()
-  while IFS= read -r purl_line || [[ -n "$purl_line" ]]; do
-    purl_line="${purl_line%$'\r'}"
-    purl_line="${purl_line#"${purl_line%%[![:space:]]*}"}"
-    purl_line="${purl_line%"${purl_line##*[![:space:]]}"}"
-    if [[ -n "$purl_line" ]]; then
-      purl_args+=("$purl_line")
+read_cli_args() {
+  local arg_line
+  cli_args=()
+  while IFS= read -r arg_line || [[ -n "$arg_line" ]]; do
+    arg_line="${arg_line%$'\r'}"
+    if [[ -n "$arg_line" ]]; then
+      cli_args+=("$arg_line")
     fi
-  done <<<"$purls"
+  done <<<"$raw_cli_args"
 }
 
 configure_venv_paths() {
@@ -108,27 +108,7 @@ resolve_vexcalibur_bin() {
 }
 
 validate_package_spec
-
-case "$command_name" in
-  help)
-    ;;
-  query-osv)
-    read_purl_args
-    if [[ ${#purl_args[@]} -eq 0 ]]; then
-      echo "purls input is required when command is query-osv" >&2
-      exit 2
-    fi
-    if ! is_true "$allow_public_osv"; then
-      echo "allow-public-osv must be true when command is query-osv" >&2
-      echo "query-osv sends package URLs to the public OSV API" >&2
-      exit 2
-    fi
-    ;;
-  *)
-    echo "unsupported command: $command_name" >&2
-    exit 2
-    ;;
-esac
+read_cli_args
 
 unset_python_tool_env
 configure_venv_paths
@@ -138,12 +118,4 @@ venv_python="$venv_dir/bin/python"
 PIP_CONFIG_FILE=/dev/null PIP_CACHE_DIR="$pip_cache_dir" "$venv_python" -I -m pip --isolated --no-cache-dir install "$package_spec"
 
 vexcalibur_bin="$(resolve_vexcalibur_bin)"
-
-case "$command_name" in
-  help)
-    "$vexcalibur_bin" --help
-    ;;
-  query-osv)
-    "$vexcalibur_bin" query-osv --allow-public-osv -- "${purl_args[@]}"
-    ;;
-esac
+"$vexcalibur_bin" "${cli_args[@]}"

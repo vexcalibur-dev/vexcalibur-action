@@ -1,17 +1,31 @@
 # Vexcalibur Action Reference
 
-The Vexcalibur Action is pre-alpha. Inputs, default values, command support, and
-exit behavior can change before the first stable action release.
+The Vexcalibur Action is pre-alpha. Inputs, default values, and exit behavior can
+change before the first stable action release.
 
-## Supported Commands
+## Runner Model
 
-The `command` input currently accepts:
+The action is a thin runner for the installed `vexcalibur` executable. It does
+not define a second action-specific command model. Adding a Vexcalibur CLI
+command should not require changing this action.
 
-- `help`: install Vexcalibur and run `vexcalibur --help`.
-- `query-osv`: install Vexcalibur and run `vexcalibur query-osv --allow-public-osv -- PURL...`.
+Pass CLI arguments with `args`. Each nonblank line becomes one argument. Blank
+lines are ignored. Carriage returns are removed. Leading spaces, trailing
+spaces, quotes, and option-looking values are preserved as literal argument
+content; the action does not perform shell parsing. Use a separate line for each
+argument.
 
-The action does not currently expose `vexcalibur generate`. SBOM-to-VEX action
-support is planned separately from this initial `query-osv` wrapper.
+Example:
+
+```yaml
+with:
+  package-spec: vexcalibur==0.1.0
+  args: |
+    query-osv
+    --allow-public-osv
+    --
+    pkg:pypi/django@1.2
+```
 
 ## Inputs
 
@@ -20,28 +34,29 @@ support is planned separately from this initial `query-osv` wrapper.
 | `package-spec` | Yes | None | Package spec passed to isolated `pip install`. Release workflows must use an exact release such as `vexcalibur==0.1.0`. |
 | `allow-development-package-spec` | No | `false` | Set to `true` to allow Git URLs, local paths, or other non-release package specs in development workflows. |
 | `python-version` | No | `3.14` | Python version passed to `actions/setup-python`. |
-| `command` | No | `help` | Supported values are `help` and `query-osv`. |
-| `purls` | No | empty | Newline-separated package URLs. Required when `command` is `query-osv`; blank lines are ignored. |
-| `allow-public-osv` | No | `false` | Must be `true` when `command` is `query-osv`; the action currently has no private OSV mirror input. |
+| `args` | No | `--help` | Newline-separated CLI arguments passed to the installed `vexcalibur` executable. Each nonblank line is one argument. |
 
 `package-spec` is validated before installation. Without
 `allow-development-package-spec: "true"`, the value must match an exact
 Vexcalibur release package spec such as `vexcalibur==0.1.0`.
 
-`purls` is split by line. Each line is trimmed, carriage returns are removed,
-and blank lines are ignored. Values that look like command-line options are
-passed as data after `--`, not interpreted as action flags.
+`args` is split by line. Blank lines are ignored and carriage returns are
+removed. The action does not trim spaces, remove quotes, or interpret shell
+escapes. To stop option parsing for a Vexcalibur command, include `--` as its own
+argument line.
 
 ## Public OSV Boundary
 
-`query-osv` sends package URLs to the public OSV API through the Vexcalibur CLI.
-The action therefore fails before installation unless
-`allow-public-osv: "true"` is set for `query-osv`.
+OSV-backed Vexcalibur commands, including `query-osv` and `generate`, can send
+package URLs, versions, or SBOM-derived inventory to the public OSV API through
+the Vexcalibur CLI. The action does not add `--allow-public-osv` for you.
+Include that CLI flag in `args` only when public OSV data sharing is explicitly
+approved for the workflow.
 
-Do not set `allow-public-osv` for private package inventories unless sending
-those package URLs to `https://api.osv.dev` is explicitly approved for the
-workflow. Use a later action release with private-provider support when private
-SBOM or package inventory data must stay inside your environment.
+Do not pass `--allow-public-osv` for private package inventories unless sending
+that inventory to `https://api.osv.dev` is explicitly approved for the workflow.
+Use a Vexcalibur CLI option such as `--osv-url`, or use offline/local findings,
+when private provider support is available for the command you are running.
 
 ## Runtime Behavior
 
@@ -53,7 +68,8 @@ Runtime sequence:
 1. `actions/setup-python` installs or selects `python-version`.
 2. The shell step runs with `/bin/bash --noprofile --norc -e -o pipefail` and
    clears `BASH_ENV` before the script starts.
-3. The script validates action inputs before installing Vexcalibur.
+3. The script validates package installation inputs before installing
+   Vexcalibur.
 4. The script creates a private working directory and virtual environment under
    `RUNNER_TEMP`.
 5. The script scrubs inherited `PYTHON*`, `PIP_*`, and `PIPX_*` environment
@@ -62,12 +78,13 @@ Runtime sequence:
    `PIP_CACHE_DIR` set to the private action cache directory, `python -I`, and
    `pip --isolated --no-cache-dir`.
 7. The script runs the `vexcalibur` executable from the private virtual
-   environment.
+   environment with the arguments from `args`.
 
 The action does not honor caller-provided executable paths such as
 `VEXCALIBUR_BIN`, and it does not resolve `vexcalibur` from the caller's `PATH`.
-Package URL input is removed from the environment before installation so
-install-time code does not receive `VEXCALIBUR_PURLS`.
+CLI argument input is removed from the environment before installation so
+install-time code does not receive `VEXCALIBUR_ARGS` or legacy
+`VEXCALIBUR_PURLS`.
 
 ## Outputs
 
@@ -75,8 +92,7 @@ The action does not define structured GitHub Actions outputs.
 
 Command output is written to the workflow log:
 
-- `help` writes the installed `vexcalibur --help` output.
-- `query-osv` passes through the installed Vexcalibur CLI output.
+The action passes through the installed Vexcalibur CLI output.
 
 See the Vexcalibur
 [CLI reference](https://github.com/vexcalibur-dev/vexcalibur/blob/main/docs/reference/cli.md)
@@ -87,13 +103,9 @@ vulnerability IDs, counts, and ordering can change.
 
 | Condition | Exit code | Message shape |
 | --- | --- | --- |
-| `help` succeeds | `0` | Vexcalibur help appears in the workflow log. |
-| `query-osv` succeeds | `0` | One CLI result line appears per package URL. |
+| Vexcalibur CLI succeeds | `0` | CLI output appears in the workflow log. |
 | `package-spec` is missing | `2` | `package-spec is required until a stable Vexcalibur release is published`. |
 | `package-spec` is not an exact release and development specs are not allowed | `2` | `package-spec must be an exact Vexcalibur release...`. |
-| `command` is unsupported | `2` | `unsupported command: VALUE`. |
-| `query-osv` has no nonblank `purls` lines | `2` | `purls input is required when command is query-osv`. |
-| `query-osv` is missing public OSV opt-in | `2` | `allow-public-osv must be true when command is query-osv`. |
 | Runner Python is missing or not executable | `2` | The message names the missing or invalid runner Python value. |
 | `RUNNER_TEMP` is missing | `2` | `RUNNER_TEMP is required to isolate the Vexcalibur installation`. |
 | Runner temp setup fails after validation | nonzero internal setup exit | Python or shell writes the setup failure to the workflow log. |
