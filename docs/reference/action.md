@@ -1,7 +1,8 @@
 # Vexcalibur Action Reference
 
-The Vexcalibur Action is pre-alpha. Inputs, default values, and exit behavior can
-change before the first stable action release.
+The Vexcalibur Action is usable for the workflows documented here, but inputs,
+default values, and exit behavior can change before the first stable action
+release.
 
 ## Runner Model
 
@@ -65,6 +66,25 @@ when private provider support is available for the command you are running.
 
 The action runs as a composite action and delegates execution to
 `scripts/run-vexcalibur.sh`.
+
+```mermaid
+sequenceDiagram
+    participant Workflow as Caller workflow
+    participant Action as Vexcalibur Action
+    participant Temp as RUNNER_TEMP virtualenv
+    participant CLI as Installed vexcalibur
+
+    Workflow->>Action: package-spec, python-version, args
+    Action->>Action: validate package-spec and scrub install env
+    Action->>Temp: create isolated virtual environment
+    Action->>Temp: pip install package-spec
+    Action->>CLI: run vexcalibur with newline-split args
+    CLI-->>Workflow: write CLI output and exit code to job log
+```
+
+In text form: the action validates package inputs, creates an isolated virtual
+environment under `RUNNER_TEMP`, installs Vexcalibur there, then runs the
+installed `vexcalibur` executable with the caller-provided CLI arguments.
 
 Runtime sequence:
 

@@ -1,6 +1,6 @@
 # Contributing
 
-Vexcalibur Action is pre-alpha. Keep action inputs narrow until the Vexcalibur package exposes stable commands.
+Vexcalibur Action is usable for documented workflows, but compatibility decisions are still being made before the first stable action release. Keep action inputs narrow until the Vexcalibur package exposes stable commands.
 
 ## Development
 
