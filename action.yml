@@ -13,18 +13,10 @@ inputs:
     description: Python version used to install and run Vexcalibur.
     required: false
     default: "3.14"
-  command:
-    description: Command to run. Supported values are help and query-osv.
+  args:
+    description: Newline-separated arguments passed to the installed vexcalibur executable.
     required: false
-    default: help
-  purls:
-    description: Newline-separated package URLs. Required when command is query-osv; blank lines are ignored.
-    required: false
-    default: ""
-  allow-public-osv:
-    description: Required when command is query-osv. Allows the action to send package URLs to the public OSV API.
-    required: false
-    default: "false"
+    default: "--help"
 
 runs:
   using: composite
@@ -43,7 +35,5 @@ runs:
         VEXCALIBUR_PYTHON: ${{ steps.setup-python.outputs.python-path }}
         VEXCALIBUR_PACKAGE_SPEC: ${{ inputs.package-spec }}
         VEXCALIBUR_ALLOW_DEVELOPMENT_PACKAGE_SPEC: ${{ inputs.allow-development-package-spec }}
-        VEXCALIBUR_COMMAND: ${{ inputs.command }}
-        VEXCALIBUR_PURLS: ${{ inputs.purls }}
-        VEXCALIBUR_ALLOW_PUBLIC_OSV: ${{ inputs.allow-public-osv }}
+        VEXCALIBUR_ARGS: ${{ inputs.args }}
       run: '"$GITHUB_ACTION_PATH/scripts/run-vexcalibur.sh"'

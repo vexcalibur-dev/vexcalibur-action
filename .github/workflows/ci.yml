@@ -68,16 +68,17 @@ jobs:
         with:
           package-spec: git+https://github.com/vexcalibur-dev/vexcalibur.git@cc9506fc451bed1a5658a53cee4eaf7174505514
           allow-development-package-spec: "true"
-          command: help
+          args: --help
 
       - name: Run local action query-osv path
         uses: ./
         with:
           package-spec: ${{ github.workspace }}/tests/fixtures/fake-vexcalibur
           allow-development-package-spec: "true"
-          command: query-osv
-          allow-public-osv: "true"
-          purls: |
+          args: |
+            query-osv
+            --allow-public-osv
+            --
             pkg:pypi/django@1.2
 
             pkg:npm/minimist@0.0.8

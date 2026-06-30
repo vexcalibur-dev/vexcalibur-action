@@ -20,35 +20,31 @@ from helpers import (
 
 
 class RunVexcaliburScriptTests(unittest.TestCase):
-    def test_help_command_passes_help_flag(self) -> None:
+    def test_default_args_pass_help_flag(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
             calls_file = root / "calls.txt"
             python_calls = root / "python-calls.txt"
             env = managed_install_env(root, calls_file, python_calls)
-            env["VEXCALIBUR_COMMAND"] = "help"
 
             result = run_script(env)
 
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertEqual(calls_file.read_text(), "--help\n")
 
-    def test_query_osv_passes_each_purl_as_an_argument(self) -> None:
+    def test_args_are_passed_one_per_nonblank_line(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
             calls_file = root / "calls.txt"
             python_calls = root / "python-calls.txt"
             env = managed_install_env(root, calls_file, python_calls)
-            env.update(
-                {
-                    "VEXCALIBUR_COMMAND": "query-osv",
-                    "VEXCALIBUR_PURLS": (
-                        "  pkg:pypi/django@1.2  \n"
-                        " \t \n"
-                        "pkg:npm/minimist@0.0.8\r\n"
-                    ),
-                    "VEXCALIBUR_ALLOW_PUBLIC_OSV": "true",
-                }
+            env["VEXCALIBUR_ARGS"] = (
+                "query-osv\n"
+                "--allow-public-osv\n"
+                "--\n"
+                "pkg:pypi/django@1.2\n"
+                "\n"
+                "pkg:npm/minimist@0.0.8\r\n"
             )
 
             result = run_script(env)
@@ -59,18 +55,20 @@ class RunVexcaliburScriptTests(unittest.TestCase):
                 "query-osv\n--allow-public-osv\n--\npkg:pypi/django@1.2\npkg:npm/minimist@0.0.8\n",
             )
 
-    def test_query_osv_treats_option_like_purls_as_data(self) -> None:
+    def test_args_preserve_spaces_quotes_and_option_like_values(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
             calls_file = root / "calls.txt"
             python_calls = root / "python-calls.txt"
             env = managed_install_env(root, calls_file, python_calls)
-            env.update(
-                {
-                    "VEXCALIBUR_COMMAND": "query-osv",
-                    "VEXCALIBUR_PURLS": "--allow-public-osv",
-                    "VEXCALIBUR_ALLOW_PUBLIC_OSV": "true",
-                }
+            env["VEXCALIBUR_ARGS"] = (
+                "generate\n"
+                "--output\n"
+                "/tmp/vex output.json\n"
+                "--label=\"literal quotes stay literal\"\n"
+                " leading-and-trailing-spaces \n"
+                "--\n"
+                "--option-like-data\n"
             )
 
             result = run_script(env)
@@ -78,46 +76,16 @@ class RunVexcaliburScriptTests(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertEqual(
                 calls_file.read_text(),
-                "query-osv\n--allow-public-osv\n--\n--allow-public-osv\n",
+                (
+                    "generate\n"
+                    "--output\n"
+                    "/tmp/vex output.json\n"
+                    "--label=\"literal quotes stay literal\"\n"
+                    " leading-and-trailing-spaces \n"
+                    "--\n"
+                    "--option-like-data\n"
+                ),
             )
-
-    def test_query_osv_requires_public_osv_opt_in(self) -> None:
-        result = run_script(
-            {
-                "VEXCALIBUR_COMMAND": "query-osv",
-                "VEXCALIBUR_PACKAGE_SPEC": "vexcalibur==0.1.0",
-                "VEXCALIBUR_PYTHON": "/bin/true",
-                "VEXCALIBUR_PURLS": "pkg:pypi/django@1.2",
-            }
-        )
-
-        self.assertEqual(result.returncode, 2)
-        self.assertIn("allow-public-osv must be true", result.stderr)
-
-    def test_query_osv_requires_purls(self) -> None:
-        result = run_script(
-            {
-                "VEXCALIBUR_COMMAND": "query-osv",
-                "VEXCALIBUR_PACKAGE_SPEC": "vexcalibur==0.1.0",
-                "VEXCALIBUR_PYTHON": "/bin/true",
-                "VEXCALIBUR_PURLS": "\n\r\n",
-            }
-        )
-
-        self.assertEqual(result.returncode, 2)
-        self.assertIn("purls input is required", result.stderr)
-
-    def test_unsupported_command_fails(self) -> None:
-        result = run_script(
-            {
-                "VEXCALIBUR_COMMAND": "unknown",
-                "VEXCALIBUR_PACKAGE_SPEC": "vexcalibur==0.1.0",
-                "VEXCALIBUR_PYTHON": "/bin/true",
-            }
-        )
-
-        self.assertEqual(result.returncode, 2)
-        self.assertIn("unsupported command: unknown", result.stderr)
 
     def test_package_spec_is_required_when_installing(self) -> None:
         result = run_script({})
@@ -197,7 +165,7 @@ class RunVexcaliburScriptTests(unittest.TestCase):
             env.update(
                 {
                     "VEXCALIBUR_BIN": str(env_override),
-                    "VEXCALIBUR_COMMAND": "help",
+                    "VEXCALIBUR_ARGS": "--help",
                     "VEXCALIBUR_SKIP_INSTALL": "true",
                 }
             )
@@ -229,7 +197,7 @@ class RunVexcaliburScriptTests(unittest.TestCase):
                 {
                     "PATH": f"{fake_bin}{os.pathsep}{path_dir}{os.pathsep}{os.environ['PATH']}",
                     "VEXCALIBUR_BIN": str(env_override),
-                    "VEXCALIBUR_COMMAND": "help",
+                    "VEXCALIBUR_ARGS": "--help",
                 }
             )
 
@@ -261,7 +229,7 @@ class RunVexcaliburScriptTests(unittest.TestCase):
             env.update(
                 {
                     "PATH": f"{hostile_bin}{os.pathsep}{os.environ['PATH']}",
-                    "VEXCALIBUR_COMMAND": "help",
+                    "VEXCALIBUR_ARGS": "--help",
                 }
             )
 
@@ -272,31 +240,33 @@ class RunVexcaliburScriptTests(unittest.TestCase):
             for calls_file in command_calls.values():
                 self.assertFalse(calls_file.exists(), str(calls_file))
 
-    def test_purls_are_not_visible_to_install_time_code(self) -> None:
+    def test_cli_args_are_not_visible_to_install_time_code(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
             managed_calls = root / "managed-calls.txt"
             python_calls = root / "python-calls.txt"
-            secret_purl = "pkg:internal/secret-component@1.0"
+            secret_arg = "pkg:internal/secret-component@1.0"
             env = managed_install_env(root, managed_calls, python_calls)
             env.update(
                 {
-                    "VEXCALIBUR_COMMAND": "help",
-                    "VEXCALIBUR_PURLS": secret_purl,
-                    "purls": "caller-exported-lowercase-purls",
+                    "VEXCALIBUR_ARGS": f"query-osv\n--\n{secret_arg}",
+                    "args": "caller-exported-lowercase-args",
                 }
             )
 
             result = run_script(env)
 
             self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertEqual(managed_calls.read_text(), "--help\n")
+            self.assertEqual(managed_calls.read_text(), f"query-osv\n--\n{secret_arg}\n")
             python_log = python_calls.read_text()
-            self.assertNotIn(secret_purl, python_log)
-            self.assertNotIn("caller-exported-lowercase-purls", python_log)
+            self.assertNotIn(secret_arg, python_log)
+            self.assertNotIn("caller-exported-lowercase-args", python_log)
             self.assertIn("VEXCALIBUR_ACTION_PURLS=\n", python_log)
+            self.assertIn("VEXCALIBUR_ACTION_ARGS=\n", python_log)
             self.assertIn("VEXCALIBUR_LOWERCASE_PURLS=\n", python_log)
             self.assertIn("LOWERCASE_PURLS=\n", python_log)
+            self.assertIn("VEXCALIBUR_LOWERCASE_ARGS=\n", python_log)
+            self.assertIn("LOWERCASE_ARGS=\n", python_log)
 
     def test_python_module_install_runs_outside_caller_workspace(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -310,7 +280,7 @@ class RunVexcaliburScriptTests(unittest.TestCase):
             runner_temp.mkdir()
             write_shadow_modules(caller_workspace)
             write_shadow_modules(runner_temp)
-            env["VEXCALIBUR_COMMAND"] = "help"
+            env["VEXCALIBUR_ARGS"] = "--help"
             env["PYTHONPATH"] = str(caller_workspace)
             env["PYTHONHOME"] = str(caller_workspace)
             env["PYTHONNOUSERSITE"] = "1"
@@ -374,7 +344,7 @@ class RunVexcaliburScriptTests(unittest.TestCase):
             env.update(
                 {
                     "BASH_ENV": str(bash_env_file),
-                    "VEXCALIBUR_COMMAND": "help",
+                    "VEXCALIBUR_ARGS": "--help",
                 }
             )
 
@@ -398,7 +368,7 @@ class RunVexcaliburScriptTests(unittest.TestCase):
             env = managed_install_env(root, managed_calls, python_calls)
             env["BASH_ENV"] = str(bash_env_file)
 
-            result = run_action_vexcalibur_step(env, {"command": "help"})
+            result = run_action_vexcalibur_step(env, {"args": "--help"})
 
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertEqual(managed_calls.read_text(), "--help\n")
@@ -417,7 +387,7 @@ class RunVexcaliburScriptTests(unittest.TestCase):
             )
             env.update(
                 {
-                    "VEXCALIBUR_COMMAND": "help",
+                    "VEXCALIBUR_ARGS": "--help",
                     "VEXCALIBUR_ALLOW_DEVELOPMENT_PACKAGE_SPEC": "true",
                 }
             )

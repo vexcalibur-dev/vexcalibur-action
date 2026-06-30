@@ -35,9 +35,7 @@ def run_action_vexcalibur_step(
     inputs = {
         "package-spec": "vexcalibur==0.1.0",
         "allow-development-package-spec": "false",
-        "command": "help",
-        "purls": "",
-        "allow-public-osv": "false",
+        "args": "--help",
         **input_overrides,
     }
     env = {**base_env, "GITHUB_ACTION_PATH": str(REPO_ROOT)}
@@ -178,7 +176,9 @@ def write_fake_python(tmpdir: Path, vexcalibur_calls_file: Path, python_calls_fi
             "    stream.write(f\"VEXCALIBUR_PIPX_DEFAULT_BACKEND={os.environ.get('PIPX_DEFAULT_BACKEND', '')}\\n\")",
             "    stream.write(f\"VEXCALIBUR_PIPX_DEFAULT_PYTHON={os.environ.get('PIPX_DEFAULT_PYTHON', '')}\\n\")",
             "    stream.write(f\"VEXCALIBUR_ACTION_PURLS={os.environ.get('VEXCALIBUR_PURLS', '')}\\n\")",
+            "    stream.write(f\"VEXCALIBUR_ACTION_ARGS={os.environ.get('VEXCALIBUR_ARGS', '')}\\n\")",
             "    stream.write(f\"VEXCALIBUR_LOWERCASE_PURLS={os.environ.get('purls', '')}\\n\")",
+            "    stream.write(f\"VEXCALIBUR_LOWERCASE_ARGS={os.environ.get('args', '')}\\n\")",
             "",
         ]
     )
@@ -211,7 +211,9 @@ def write_fake_python(tmpdir: Path, vexcalibur_calls_file: Path, python_calls_fi
                 "    stream.write(f\"PIPX_HOME={os.environ.get('PIPX_HOME', '')}\\n\")",
                 "    stream.write(f\"PIPX_BIN_DIR={os.environ.get('PIPX_BIN_DIR', '')}\\n\")",
                 "    stream.write(f\"VEXCALIBUR_ACTION_PURLS={os.environ.get('VEXCALIBUR_PURLS', '')}\\n\")",
+                "    stream.write(f\"VEXCALIBUR_ACTION_ARGS={os.environ.get('VEXCALIBUR_ARGS', '')}\\n\")",
                 "    stream.write(f\"LOWERCASE_PURLS={os.environ.get('purls', '')}\\n\")",
+                "    stream.write(f\"LOWERCASE_ARGS={os.environ.get('args', '')}\\n\")",
                 "if args[:1] == ['-c']:",
                 "    runner_temp = Path(raw_args[-1])",
                 "    runner_temp.mkdir(parents=True, exist_ok=True)",
