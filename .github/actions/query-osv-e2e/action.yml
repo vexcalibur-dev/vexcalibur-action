@@ -1,0 +1,87 @@
+name: Query OSV E2E
+description: Run the Vexcalibur Action against a local fake OSV-compatible server.
+
+inputs:
+  package-spec:
+    description: Package spec passed through to the Vexcalibur Action.
+    required: true
+  allow-development-package-spec:
+    description: Whether the Vexcalibur Action should allow non-release package specs.
+    required: false
+    default: "false"
+  python-version:
+    description: Python version passed through to the Vexcalibur Action.
+    required: false
+    default: "3.14"
+
+runs:
+  using: composite
+  steps:
+    - name: Start fake OSV
+      id: fake-osv
+      shell: bash
+      run: |
+        set -euo pipefail
+        python tests/fixtures/fake_osv_server.py \
+          --host 127.0.0.1 \
+          --port 0 \
+          --port-file "$RUNNER_TEMP/fake-osv-port" \
+          --request-log "$RUNNER_TEMP/fake-osv-requests.jsonl" &
+        echo "$!" > "$RUNNER_TEMP/fake-osv.pid"
+        for _ in {1..50}; do
+          if [[ -s "$RUNNER_TEMP/fake-osv-port" ]]; then
+            port="$(cat "$RUNNER_TEMP/fake-osv-port")"
+            echo "url=http://127.0.0.1:$port" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          sleep 0.1
+        done
+        echo "fake OSV server did not write its port file" >&2
+        exit 1
+
+    - name: Run local action query-osv
+      uses: ./
+      with:
+        package-spec: ${{ inputs.package-spec }}
+        allow-development-package-spec: ${{ inputs.allow-development-package-spec }}
+        python-version: ${{ inputs.python-version }}
+        args: |
+          query-osv
+          --osv-url
+          ${{ steps.fake-osv.outputs.url }}
+          --
+          pkg:pypi/django@1.2
+
+          pkg:npm/minimist@0.0.8
+
+    - name: Validate fake OSV request
+      shell: bash
+      run: |
+        python - <<'PY'
+        from pathlib import Path
+        import json
+        import os
+
+        request_log = Path(os.environ["RUNNER_TEMP"]) / "fake-osv-requests.jsonl"
+        requests = [
+            json.loads(line)
+            for line in request_log.read_text(encoding="utf-8").splitlines()
+            if line
+        ]
+        assert len(requests) == 1, requests
+        assert requests[0]["path"] == "/v1/querybatch", requests
+        assert requests[0]["body"] == {
+            "queries": [
+                {"package": {"purl": "pkg:pypi/django@1.2"}},
+                {"package": {"purl": "pkg:npm/minimist@0.0.8"}},
+            ]
+        }, requests
+        PY
+
+    - name: Stop fake OSV
+      if: always()
+      shell: bash
+      run: |
+        if [[ -f "$RUNNER_TEMP/fake-osv.pid" ]]; then
+          kill "$(cat "$RUNNER_TEMP/fake-osv.pid")" || true
+        fi

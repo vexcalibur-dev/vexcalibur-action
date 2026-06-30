@@ -15,11 +15,12 @@ spaces, quotes, and option-looking values are preserved as literal argument
 content; the action does not perform shell parsing. Use a separate line for each
 argument.
 
-Example:
+Development example:
 
 ```yaml
 with:
-  package-spec: vexcalibur==0.1.0
+  package-spec: git+https://github.com/vexcalibur-dev/vexcalibur.git@main
+  allow-development-package-spec: "true"
   args: |
     query-osv
     --allow-public-osv
@@ -39,6 +40,8 @@ with:
 `package-spec` is validated before installation. Without
 `allow-development-package-spec: "true"`, the value must match an exact
 Vexcalibur release package spec such as `vexcalibur==0.1.0`.
+See the [compatibility reference](compatibility.md) for the current action tag
+and package version policy.
 
 `args` is split by line. Blank lines are ignored and carriage returns are
 removed. The action does not trim spaces, remove quotes, or interpret shell
@@ -134,3 +137,8 @@ Use the development quick-start workflows in the repository
   output.
 - `query-osv`: the workflow passes and the action logs include Vexcalibur CLI
   output for each submitted package URL.
+
+The hosted CI compatibility checks also build a Vexcalibur wheel, run `help` and
+`query-osv` E2E scenarios against that wheel, and upload a generated
+SBOM-to-VEX artifact. See the [compatibility reference](compatibility.md) for
+the current matrix.
