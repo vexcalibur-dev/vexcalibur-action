@@ -1,0 +1,33 @@
+name: Resolve Vexcalibur wheel
+description: Download the Vexcalibur wheel artifact and expose its path.
+
+inputs:
+  artifact-name:
+    description: Name of the uploaded wheel artifact.
+    required: true
+
+outputs:
+  wheel-path:
+    description: Absolute path to the downloaded Vexcalibur wheel.
+    value: ${{ steps.resolve.outputs.wheel-path }}
+
+runs:
+  using: composite
+  steps:
+    - name: Download Vexcalibur wheel
+      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      with:
+        name: ${{ inputs.artifact-name }}
+        path: ${{ runner.temp }}/vexcalibur-dist
+
+    - name: Resolve wheel path
+      id: resolve
+      shell: bash
+      run: |
+        set -euo pipefail
+        wheel_path="$(find "${{ runner.temp }}/vexcalibur-dist" -maxdepth 1 -name 'vexcalibur-*.whl' -print -quit)"
+        if [[ -z "$wheel_path" ]]; then
+          echo "vexcalibur wheel artifact was not downloaded" >&2
+          exit 1
+        fi
+        echo "wheel-path=$wheel_path" >> "$GITHUB_OUTPUT"

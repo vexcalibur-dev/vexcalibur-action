@@ -14,11 +14,11 @@ for a trusted action release commit and an exact PyPI package release.
 
 ## Development Quick Start
 
-This is the runnable pre-release path validated by this repository's CI after these
-docs are merged to `main`. If you are testing an unmerged PR, replace `@main` with
-the PR branch or full action commit SHA you are validating. This path uses the mutable
-action branch and a pinned Vexcalibur Git commit, so it is appropriate for development
-smoke tests only.
+This is the runnable pre-release path for development smoke tests. CI validates
+the same action/package compatibility path by building a Vexcalibur wheel from
+`vexcalibur-dev/vexcalibur@main`; the examples below install that same
+development branch directly. If you are testing an unmerged action PR, replace
+`@main` with the PR branch or full action commit SHA you are validating.
 
 ```yaml
 name: Vexcalibur
@@ -34,7 +34,7 @@ jobs:
     steps:
       - uses: vexcalibur-dev/vexcalibur-action@main
         with:
-          package-spec: git+https://github.com/vexcalibur-dev/vexcalibur.git@cc9506fc451bed1a5658a53cee4eaf7174505514
+          package-spec: git+https://github.com/vexcalibur-dev/vexcalibur.git@main
           allow-development-package-spec: "true"
           args: --help
 ```
@@ -61,7 +61,7 @@ jobs:
     steps:
       - uses: vexcalibur-dev/vexcalibur-action@main
         with:
-          package-spec: git+https://github.com/vexcalibur-dev/vexcalibur.git@cc9506fc451bed1a5658a53cee4eaf7174505514
+          package-spec: git+https://github.com/vexcalibur-dev/vexcalibur.git@main
           allow-development-package-spec: "true"
           args: |
             query-osv
@@ -77,6 +77,8 @@ These examples describe the intended stable interface, but they are not runnable
 Vexcalibur publishes its first PyPI package and this action publishes a release.
 Replace `ACTION_RELEASE_COMMIT_SHA` with the full action commit SHA for the release.
 Release workflows should pin both the action and the package to trusted versions.
+See the [compatibility reference](docs/reference/compatibility.md) for the
+current action tag and package version policy.
 
 ```yaml
 - uses: vexcalibur-dev/vexcalibur-action@ACTION_RELEASE_COMMIT_SHA
@@ -127,6 +129,7 @@ python -m unittest discover -s tests
 ## Project Links
 
 - [Action reference](docs/reference/action.md)
+- [Compatibility reference](docs/reference/compatibility.md)
 - [Security policy](SECURITY.md)
 - [Contributing](CONTRIBUTING.md)
 - [License](LICENSE)

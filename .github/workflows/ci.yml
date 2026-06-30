@@ -10,6 +10,12 @@ on:
 permissions:
   contents: read
 
+env:
+  VEXCALIBUR_SOURCE_REF: main
+  VEXCALIBUR_RELEASE_PACKAGE_VERSION: ""
+  VEXCALIBUR_WHEEL_ARTIFACT: vexcalibur-wheel
+  VEXCALIBUR_SBOM_TO_VEX_ARTIFACT: vexcalibur-sbom-to-vex-output
+
 jobs:
   quality:
     name: Quality
@@ -17,6 +23,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
 
       - name: Set up Python
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
@@ -55,41 +63,241 @@ jobs:
       - name: Run unit tests
         run: python -m unittest discover -s tests
 
-  smoke:
-    name: Action smoke test
+  build-vexcalibur-wheel:
+    name: Build Vexcalibur wheel
     runs-on: ubuntu-latest
     needs: [quality]
     steps:
+      - name: Checkout Vexcalibur
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          repository: vexcalibur-dev/vexcalibur
+          ref: ${{ env.VEXCALIBUR_SOURCE_REF }}
+          path: vexcalibur-source
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: "3.14"
+
+      - name: Build wheel
+        run: python -m pip wheel --no-deps --wheel-dir "$RUNNER_TEMP/vexcalibur-dist" ./vexcalibur-source
+
+      - name: Validate built wheel
+        run: |
+          set -euo pipefail
+          wheel_count="$(find "$RUNNER_TEMP/vexcalibur-dist" -maxdepth 1 -name 'vexcalibur-*.whl' | wc -l)"
+          if [[ "$wheel_count" -ne 1 ]]; then
+            echo "expected exactly one vexcalibur wheel, found $wheel_count" >&2
+            find "$RUNNER_TEMP/vexcalibur-dist" -maxdepth 1 -type f >&2
+            exit 1
+          fi
+          find "$RUNNER_TEMP/vexcalibur-dist" -maxdepth 1 -name 'vexcalibur-*.whl' -print
+
+      - name: Upload wheel
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ env.VEXCALIBUR_WHEEL_ARTIFACT }}
+          path: ${{ runner.temp }}/vexcalibur-dist/vexcalibur-*.whl
+          if-no-files-found: error
+
+  e2e-wheel-help:
+    name: Action E2E help (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    needs: [quality, build-vexcalibur-wheel]
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.14"]
+    steps:
       - name: Checkout
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
 
-      - name: Run local action
+      - name: Resolve Vexcalibur wheel
+        id: wheel
+        uses: ./.github/actions/resolve-vexcalibur-wheel
+        with:
+          artifact-name: ${{ env.VEXCALIBUR_WHEEL_ARTIFACT }}
+
+      - name: Run local action help
         uses: ./
         with:
-          package-spec: git+https://github.com/vexcalibur-dev/vexcalibur.git@cc9506fc451bed1a5658a53cee4eaf7174505514
+          package-spec: ${{ steps.wheel.outputs.wheel-path }}
           allow-development-package-spec: "true"
+          python-version: ${{ matrix.python-version }}
           args: --help
 
-      - name: Run local action query-osv path
+  e2e-wheel-query-osv:
+    name: Action E2E query-osv (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    needs: [quality, build-vexcalibur-wheel]
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.14"]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+
+      - name: Resolve Vexcalibur wheel
+        id: wheel
+        uses: ./.github/actions/resolve-vexcalibur-wheel
+        with:
+          artifact-name: ${{ env.VEXCALIBUR_WHEEL_ARTIFACT }}
+
+      - name: Run local action query-osv
+        uses: ./.github/actions/query-osv-e2e
+        with:
+          package-spec: ${{ steps.wheel.outputs.wheel-path }}
+          allow-development-package-spec: "true"
+          python-version: ${{ matrix.python-version }}
+
+  sbom-to-vex-e2e:
+    name: SBOM-to-VEX action E2E
+    runs-on: ubuntu-latest
+    needs: [quality, build-vexcalibur-wheel]
+    steps:
+      - name: Checkout action
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+
+      - name: Resolve Vexcalibur wheel
+        id: wheel
+        uses: ./.github/actions/resolve-vexcalibur-wheel
+        with:
+          artifact-name: ${{ env.VEXCALIBUR_WHEEL_ARTIFACT }}
+
+      - name: Prepare output directory
+        run: mkdir -p "$RUNNER_TEMP/vexcalibur-action-artifacts"
+
+      - name: Generate VEX from XML SBOM
         uses: ./
         with:
-          package-spec: ${{ github.workspace }}/tests/fixtures/fake-vexcalibur
+          package-spec: ${{ steps.wheel.outputs.wheel-path }}
           allow-development-package-spec: "true"
           args: |
-            query-osv
-            --allow-public-osv
-            --
-            pkg:pypi/django@1.2
+            generate
+            ${{ github.workspace }}/tests/fixtures/sbom/cyclonedx-xml-1.5-simple.xml
+            --offline
+            --findings-file
+            ${{ github.workspace }}/tests/fixtures/findings/all-analysis-states.json
+            --timestamp
+            2026-06-23T00:00:00Z
+            --output
+            ${{ runner.temp }}/vexcalibur-action-artifacts/cyclonedx-vex.xml-input.json
 
-            pkg:npm/minimist@0.0.8
-
-      - name: Validate query-osv smoke arguments
+      - name: Validate generated artifact
         run: |
-          cat > "$RUNNER_TEMP/expected-vexcalibur-query-args.txt" <<'EOF'
-          query-osv
-          --allow-public-osv
-          --
-          pkg:pypi/django@1.2
-          pkg:npm/minimist@0.0.8
-          EOF
-          diff -u "$RUNNER_TEMP/expected-vexcalibur-query-args.txt" "$RUNNER_TEMP/vexcalibur-query-args.txt"
+          python - <<'PY'
+          from pathlib import Path
+          import json
+          import os
+
+          artifact = Path(os.environ["RUNNER_TEMP"]) / "vexcalibur-action-artifacts" / "cyclonedx-vex.xml-input.json"
+          payload = json.loads(artifact.read_text(encoding="utf-8"))
+          assert payload["bomFormat"] == "CycloneDX", payload
+          assert isinstance(payload["vulnerabilities"], list), payload
+          assert len(payload["vulnerabilities"]) == 5, payload
+          PY
+
+      - name: Upload generated VEX
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ env.VEXCALIBUR_SBOM_TO_VEX_ARTIFACT }}
+          path: ${{ runner.temp }}/vexcalibur-action-artifacts/*.json
+          if-no-files-found: warn
+
+  resolve-released-package:
+    name: Resolve released package
+    runs-on: ubuntu-latest
+    needs: [quality]
+    outputs:
+      has-release: ${{ steps.release.outputs.has_release }}
+      version: ${{ steps.release.outputs.version }}
+    steps:
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: "3.14"
+
+      - name: Find latest released package
+        id: release
+        run: |
+          python - <<'PY' >> "$GITHUB_OUTPUT"
+          from urllib.error import HTTPError
+          from urllib.request import urlopen
+          import json
+          import os
+
+          expected_version = os.environ["VEXCALIBUR_RELEASE_PACKAGE_VERSION"].strip()
+
+          try:
+              with urlopen("https://pypi.org/pypi/vexcalibur/json", timeout=30) as response:
+                  payload = json.load(response)
+          except HTTPError as exc:
+              if exc.code == 404:
+                  if expected_version:
+                      raise SystemExit(
+                          "VEXCALIBUR_RELEASE_PACKAGE_VERSION is set, but PyPI has no vexcalibur project"
+                      )
+                  print("has_release=false")
+                  raise SystemExit(0)
+              raise
+
+          version = payload["info"]["version"]
+          if not expected_version:
+              raise SystemExit(
+                  "PyPI has a vexcalibur release, but VEXCALIBUR_RELEASE_PACKAGE_VERSION is empty"
+              )
+          if version != expected_version:
+              raise SystemExit(
+                  "latest PyPI vexcalibur release does not match "
+                  f"VEXCALIBUR_RELEASE_PACKAGE_VERSION ({version} != {expected_version})"
+              )
+          print("has_release=true")
+          print(f"version={version}")
+          PY
+
+      - name: Report missing release
+        if: steps.release.outputs.has_release != 'true'
+        run: echo "No Vexcalibur PyPI release exists yet; skipping released-package E2E."
+
+  released-package-help:
+    name: Released package E2E help
+    runs-on: ubuntu-latest
+    needs: [quality, resolve-released-package]
+    if: needs.resolve-released-package.outputs.has-release == 'true'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+
+      - name: Run latest released package help
+        uses: ./
+        with:
+          package-spec: vexcalibur==${{ needs.resolve-released-package.outputs.version }}
+          args: --help
+
+  released-package-query-osv:
+    name: Released package E2E query-osv
+    runs-on: ubuntu-latest
+    needs: [quality, resolve-released-package]
+    if: needs.resolve-released-package.outputs.has-release == 'true'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+
+      - name: Run latest released package query-osv
+        uses: ./.github/actions/query-osv-e2e
+        with:
+          package-spec: vexcalibur==${{ needs.resolve-released-package.outputs.version }}
