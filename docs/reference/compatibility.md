@@ -40,19 +40,29 @@ input.
 
 This repository verifies the action/package boundary with these hosted checks:
 
+- Runs `bash -n`, ShellCheck, `actionlint`, YAML/JSON parsing, and action unit
+  tests before building or running package compatibility checks.
 - Builds a Vexcalibur wheel from `vexcalibur-dev/vexcalibur@main`.
 - Runs the local action with that wheel for `--help` on Python `3.10` and
   Python `3.14`.
 - Runs `query-osv` against a local fake OSV-compatible server on Python `3.10`
   and Python `3.14`; this does not send package data to public OSV.
 - Runs `generate` with an XML SBOM and local findings, writes a CycloneDX VEX
-  JSON file, validates the JSON, and uploads the generated file as a workflow
-  artifact named `vexcalibur-sbom-to-vex-output`. The artifact currently
-  contains `cyclonedx-vex.xml-input.json`.
+  JSON file, compares it to the golden fixture from the same Vexcalibur source
+  checkout used to build the wheel, and uploads the generated file as a workflow
+  artifact named `vexcalibur-sbom-to-vex-output`. The artifact currently contains
+  `cyclonedx-vex.xml-input.json`.
 - Checks PyPI for the latest expected `vexcalibur` package and runs `--help` and
   `query-osv` against it when an official package release exists. Before the
   first PyPI release, this job reports the missing release and exits
   successfully.
+- Runs dependency review on pull requests and OpenSSF Scorecard as part of the
+  same CI workflow without requiring pull request comments or SARIF upload side
+  effects for the required CI gate.
+- Aggregates the required quality, wheel, action E2E, SBOM-to-VEX, and release
+  resolution jobs in a single `CI result` job. Dependency review may be skipped
+  outside pull requests. Released-package E2E jobs may be skipped only while no
+  official package release exists.
 
 The action remains a thin CLI runner. Adding a Vexcalibur command should not
 require changing the action runner, but important user workflows can add new E2E
