@@ -143,10 +143,15 @@ From the action repository root, run:
 ```bash
 python -m pip install -r requirements-dev.txt
 bash -n scripts/run-vexcalibur.sh
+shellcheck scripts/run-vexcalibur.sh
+ASDF_ACTIONLINT_VERSION=1.7.12 actionlint .github/workflows/*.yml
 python -m unittest discover -s tests
 ```
 
-Expected success signal: `unittest` reports all tests passing.
+Expected success signal: ShellCheck and actionlint exit with status `0`, and
+`unittest` reports all tests passing. `requirements-dev.txt` installs
+ShellCheck; install actionlint through your local toolchain before running the
+full local gate.
 
 ## Workflow Verification
 

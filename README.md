@@ -2,7 +2,6 @@
 
 [![CI](https://github.com/vexcalibur-dev/vexcalibur-action/actions/workflows/ci.yml/badge.svg)](https://github.com/vexcalibur-dev/vexcalibur-action/actions/workflows/ci.yml)
 [![OpenSSF Scorecard](https://github.com/vexcalibur-dev/vexcalibur-action/actions/workflows/scorecard.yml/badge.svg)](https://github.com/vexcalibur-dev/vexcalibur-action/actions/workflows/scorecard.yml)
-[![Dependency Review](https://github.com/vexcalibur-dev/vexcalibur-action/actions/workflows/dependency-review.yml/badge.svg)](https://github.com/vexcalibur-dev/vexcalibur-action/actions/workflows/dependency-review.yml)
 
 ![Vexcalibur wordmark and sword logo](docs/assets/vexcalibur-banner.png)
 
@@ -138,8 +137,14 @@ Run local checks:
 ```bash
 python -m pip install -r requirements-dev.txt
 bash -n scripts/run-vexcalibur.sh
+shellcheck scripts/run-vexcalibur.sh
+ASDF_ACTIONLINT_VERSION=1.7.12 actionlint .github/workflows/*.yml
 python -m unittest discover -s tests
 ```
+
+`requirements-dev.txt` installs ShellCheck. Install actionlint through your local
+toolchain before running the full local gate. Hosted CI installs actionlint
+before running it.
 
 ## Project Links
 
