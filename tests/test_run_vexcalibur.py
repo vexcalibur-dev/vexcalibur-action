@@ -401,6 +401,60 @@ class RunVexcaliburScriptTests(unittest.TestCase):
                 python_calls.read_text(),
             )
 
+    def test_constraints_file_is_passed_to_pip_install(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            managed_calls = root / "managed-calls.txt"
+            python_calls = root / "python-calls.txt"
+            constraints_file = root / "constraints.txt"
+            constraints_file.write_text("httpx==0.28.1\n", encoding="utf-8")
+            env = managed_install_env(root, managed_calls, python_calls)
+            env.update(
+                {
+                    "VEXCALIBUR_ARGS": "--help",
+                    "VEXCALIBUR_CONSTRAINTS_FILE": str(constraints_file),
+                }
+            )
+
+            result = run_script(env)
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(managed_calls.read_text(), "--help\n")
+            self.assertIn(
+                "pip --isolated --no-cache-dir install "
+                f"--constraint {constraints_file} vexcalibur==0.1.0",
+                python_calls.read_text(),
+            )
+
+    def test_missing_constraints_file_fails_before_install(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            managed_calls = root / "managed-calls.txt"
+            python_calls = root / "python-calls.txt"
+            env = managed_install_env(root, managed_calls, python_calls)
+            env["VEXCALIBUR_CONSTRAINTS_FILE"] = str(root / "missing-constraints.txt")
+
+            result = run_script(env)
+
+            self.assertEqual(result.returncode, 2)
+            self.assertIn("constraints-file does not exist or is not readable", result.stderr)
+            self.assertFalse(python_calls.exists())
+
+    def test_relative_constraints_file_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            managed_calls = root / "managed-calls.txt"
+            python_calls = root / "python-calls.txt"
+            (root / "constraints.txt").write_text("httpx==0.28.1\n", encoding="utf-8")
+            env = managed_install_env(root, managed_calls, python_calls)
+            env["VEXCALIBUR_CONSTRAINTS_FILE"] = "constraints.txt"
+
+            result = run_script(env, cwd=root)
+
+            self.assertEqual(result.returncode, 2)
+            self.assertIn("constraints-file must be an absolute path", result.stderr)
+            self.assertFalse(python_calls.exists())
+
 
 def _empty_python_tool_env() -> dict[str, str]:
     return {

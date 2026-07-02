@@ -34,6 +34,7 @@ with:
 | --- | --- | --- | --- |
 | `package-spec` | Yes | None | Package spec passed to isolated `pip install`. Release workflows must use an exact release such as `vexcalibur==0.1.1`. |
 | `allow-development-package-spec` | No | `false` | Set to `true` to allow Git URLs, local paths, or other non-release package specs in development workflows. |
+| `constraints-file` | No | None | Absolute path to a [pip constraints file](https://pip.pypa.io/en/stable/user_guide/#constraints-files) applied to the isolated install. Pins transitive dependency versions so installs are reproducible and new PyPI releases of transitive dependencies cannot change what the action runs. |
 | `python-version` | No | `3.14` | Python version passed to `actions/setup-python`. |
 | `args` | No | `--help` | Newline-separated CLI arguments passed to the installed `vexcalibur` executable. Each nonblank line is one argument. |
 
@@ -47,6 +48,23 @@ and package version policy.
 removed. The action does not trim spaces, remove quotes, or interpret shell
 escapes. To stop option parsing for a Vexcalibur command, include `--` as its own
 argument line.
+
+`package-spec` pins the Vexcalibur version exactly, but pip resolves
+Vexcalibur's transitive dependencies from PyPI at run time. Without
+`constraints-file`, the resolved dependency tree can change between runs as new
+releases are published. Supply-chain-sensitive workflows should check a
+constraints file into the caller repository, pin every transitive dependency in
+it, and pass its absolute path:
+
+```yaml
+with:
+  package-spec: vexcalibur==0.1.0
+  constraints-file: ${{ github.workspace }}/.github/vexcalibur-constraints.txt
+```
+
+The path must be absolute because the action runs outside the caller's
+workspace. The file is passed to `pip install --constraint` inside the isolated
+environment.
 
 ## Public OSV Boundary
 
@@ -98,7 +116,9 @@ Runtime sequence:
    variables before Python and pip run.
 6. `pip` installs `package-spec` with `PIP_CONFIG_FILE=/dev/null`,
    `PIP_CACHE_DIR` set to the private action cache directory, `python -I`, and
-   `pip --isolated --no-cache-dir`.
+   `pip --isolated --no-cache-dir`. When `constraints-file` is set, the file is
+   passed as `pip install --constraint` so transitive dependency versions are
+   pinned by the caller.
 7. The script runs the `vexcalibur` executable from the private virtual
    environment with the arguments from `args`.
 
@@ -128,6 +148,8 @@ vulnerability IDs, counts, and ordering can change.
 | Vexcalibur CLI succeeds | `0` | CLI output appears in the workflow log. |
 | `package-spec` is missing | `2` | `package-spec is required`. |
 | `package-spec` is not an exact release and development specs are not allowed | `2` | `package-spec must be an exact Vexcalibur release...`. |
+| `constraints-file` is not an absolute path | `2` | `constraints-file must be an absolute path: ...`. |
+| `constraints-file` does not exist or is not readable | `2` | `constraints-file does not exist or is not readable: ...`. |
 | Runner Python is missing or not executable | `2` | The message names the missing or invalid runner Python value. |
 | `RUNNER_TEMP` is missing | `2` | `RUNNER_TEMP is required to isolate the Vexcalibur installation`. |
 | Runner temp setup fails after validation | nonzero internal setup exit | Python or shell writes the setup failure to the workflow log. |
