@@ -9,6 +9,13 @@ inputs:
     description: Allow non-release package specs such as Git URLs. Use only for development workflows.
     required: false
     default: "false"
+  constraints-file:
+    description: >-
+      Absolute path to a pip constraints file applied to the isolated install.
+      Use this to pin transitive dependency versions for reproducible,
+      supply-chain-hardened installs.
+    required: false
+    default: ""
   python-version:
     description: Python version used to install and run Vexcalibur.
     required: false
@@ -35,5 +42,6 @@ runs:
         VEXCALIBUR_PYTHON: ${{ steps.setup-python.outputs.python-path }}
         VEXCALIBUR_PACKAGE_SPEC: ${{ inputs.package-spec }}
         VEXCALIBUR_ALLOW_DEVELOPMENT_PACKAGE_SPEC: ${{ inputs.allow-development-package-spec }}
+        VEXCALIBUR_CONSTRAINTS_FILE: ${{ inputs.constraints-file }}
         VEXCALIBUR_ARGS: ${{ inputs.args }}
       run: '"$GITHUB_ACTION_PATH/scripts/run-vexcalibur.sh"'
