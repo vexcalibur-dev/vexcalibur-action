@@ -106,6 +106,18 @@ current action tag and package version policy.
       pkg:npm/minimist@0.0.8
 ```
 
+`package-spec` pins the Vexcalibur version, but transitive dependencies are
+resolved from PyPI at run time. Supply-chain-sensitive workflows should also
+pin those with a checked-in pip constraints file:
+
+```yaml
+- uses: vexcalibur-dev/vexcalibur-action@ACTION_RELEASE_COMMIT_SHA
+  with:
+    package-spec: vexcalibur==0.1.0
+    constraints-file: ${{ github.workspace }}/.github/vexcalibur-constraints.txt
+    args: --help
+```
+
 ## Inputs
 
 See the [action reference](docs/reference/action.md) for inputs, defaults,

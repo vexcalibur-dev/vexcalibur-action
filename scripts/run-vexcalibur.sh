@@ -3,6 +3,7 @@ set -euo pipefail
 
 package_spec="${VEXCALIBUR_PACKAGE_SPEC:-}"
 allow_development_package_spec="${VEXCALIBUR_ALLOW_DEVELOPMENT_PACKAGE_SPEC:-false}"
+constraints_file="${VEXCALIBUR_CONSTRAINTS_FILE:-}"
 if [[ -v VEXCALIBUR_ARGS ]]; then
   raw_cli_args="$VEXCALIBUR_ARGS"
 else
@@ -17,7 +18,7 @@ venv_dir=""
 venv_python=""
 vexcalibur_bin=""
 
-export -n package_spec allow_development_package_spec raw_cli_args
+export -n package_spec allow_development_package_spec constraints_file raw_cli_args
 export -n runner_temp python_bin action_work_dir pip_cache_dir venv_dir venv_python vexcalibur_bin
 unset VEXCALIBUR_ARGS VEXCALIBUR_PURLS args purls
 
@@ -53,6 +54,22 @@ validate_package_spec() {
   echo "package-spec must be an exact Vexcalibur release such as vexcalibur==0.1.0" >&2
   echo "set allow-development-package-spec to true only for development workflows" >&2
   exit 2
+}
+
+validate_constraints_file() {
+  if [[ -z "$constraints_file" ]]; then
+    return
+  fi
+
+  if [[ "$constraints_file" != /* ]]; then
+    echo "constraints-file must be an absolute path: $constraints_file" >&2
+    exit 2
+  fi
+
+  if [[ ! -f "$constraints_file" || ! -r "$constraints_file" ]]; then
+    echo "constraints-file does not exist or is not readable: $constraints_file" >&2
+    exit 2
+  fi
 }
 
 read_cli_args() {
@@ -108,6 +125,7 @@ resolve_vexcalibur_bin() {
 }
 
 validate_package_spec
+validate_constraints_file
 read_cli_args
 
 unset_python_tool_env
@@ -115,7 +133,12 @@ configure_venv_paths
 cd "$action_work_dir"
 "$python_bin" -I -m venv "$venv_dir"
 venv_python="$venv_dir/bin/python"
-PIP_CONFIG_FILE=/dev/null PIP_CACHE_DIR="$pip_cache_dir" "$venv_python" -I -m pip --isolated --no-cache-dir install "$package_spec"
+pip_install_args=(--isolated --no-cache-dir install)
+if [[ -n "$constraints_file" ]]; then
+  pip_install_args+=(--constraint "$constraints_file")
+fi
+pip_install_args+=("$package_spec")
+PIP_CONFIG_FILE=/dev/null PIP_CACHE_DIR="$pip_cache_dir" "$venv_python" -I -m pip "${pip_install_args[@]}"
 
 vexcalibur_bin="$(resolve_vexcalibur_bin)"
 "$vexcalibur_bin" "${cli_args[@]}"
