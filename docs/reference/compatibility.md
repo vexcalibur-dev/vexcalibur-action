@@ -37,12 +37,13 @@ Action releases are created by `.github/workflows/release.yml` on pushes to
 `main` and by manual dispatch. The workflow computes `vX.Y.Z` tags from
 Conventional Commit messages with `scripts/next-release-tag.sh`, verifies that
 this table already includes the computed action tag and current expected package
-version, waits for the CI workflow to pass for the exact release SHA, scans
-generated release notes for secrets without a write-capable token in scope, then
-uses the organization automation GitHub App to create the tag and GitHub
-Release. The workflow does not create or update moving compatibility tags such
-as `v1`. Pin the full release commit SHA when a consuming workflow requires
-immutable action pinning.
+version, waits for the CI workflow to pass for the exact release SHA, uses the
+organization automation GitHub App to generate release notes, scans those notes
+for secrets in a separate step that does not place that app token in the scanner
+environment, then uses the same app token to create the tag and GitHub Release.
+The workflow does not create or update moving compatibility tags such as `v1`.
+Pin the full release commit SHA when a consuming workflow requires immutable
+action pinning.
 
 See [Release the action](../how-to/release-action.md) for maintainer
 prerequisites, bump rules, verification steps, and failure handling.

@@ -198,11 +198,22 @@ jobs:
       - name: Install release note scanner
         run: python -m pip install -r requirements-dev.txt
 
-      - name: Generate and scan release notes
+      - name: Generate app token
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ vars.AUTOMATION_CLIENT_ID }}
+          private-key: ${{ secrets.AUTOMATION_SECRET }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+          permission-contents: write
+
+      - name: Generate release notes
         env:
           RELEASE_TAG: ${{ needs.resolve.outputs.tag }}
           PREVIOUS_TAG: ${{ needs.resolve.outputs.previous_tag }}
           RELEASE_SHA: ${{ needs.resolve.outputs.sha }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           set -euo pipefail
 
@@ -215,20 +226,15 @@ jobs:
             args+=(-f "previous_tag_name=${PREVIOUS_TAG}")
           fi
 
-          GH_TOKEN="${{ github.token }}" gh api "${args[@]}" --jq .body > /tmp/vexcalibur-action-release-notes.md
+          gh api "${args[@]}" --jq .body > /tmp/vexcalibur-action-release-notes.md
+
+      - name: Scan release notes
+        run: |
+          set -euo pipefail
+
           detect-secrets-hook \
             --baseline .secrets.baseline \
             -- /tmp/vexcalibur-action-release-notes.md
-
-      - name: Generate app token
-        id: app-token
-        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
-        with:
-          client-id: ${{ vars.AUTOMATION_CLIENT_ID }}
-          private-key: ${{ secrets.AUTOMATION_SECRET }}
-          owner: ${{ github.repository_owner }}
-          repositories: ${{ github.event.repository.name }}
-          permission-contents: write
 
       - name: Create release tag
         env:

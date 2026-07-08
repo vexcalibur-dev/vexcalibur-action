@@ -16,10 +16,11 @@ Use this runbook when preparing or recovering a Vexcalibur Action release.
 - The automation app token can write repository contents so it can create tags
   and GitHub Releases.
 
-The release workflow runs with read-only default permissions until it has
-verified the release candidate, generated and scanned release notes, and is
-ready to publish. It creates the write-capable app token only for the tag and
-release steps.
+The release workflow runs with read-only default permissions while it verifies
+the release candidate and waits for CI. It then creates the write-capable app
+token for GitHub release-note generation, tag creation, and release creation.
+Generated release notes are scanned in a separate step that does not place that
+app token in the scanner environment.
 
 ## Version Rules
 
@@ -82,6 +83,36 @@ Release.
 | Release-note secret scan fails | Generated release notes contain a detected secret-like value. | Inspect the release notes, remove or rotate any sensitive value, and rerun release only after the notes are safe. |
 | Tag exists on a different commit | The requested tag already points somewhere else. | Do not move the tag. Choose a later version or investigate the incorrect tag before continuing. |
 | Tag exists on the current commit but the release is missing | A previous run failed after tag creation. | Rerun the `Release` workflow with the same manual version. |
+
+To inspect a release-note secret scan failure locally, reconstruct the generated
+notes body and run the same scanner:
+
+```bash
+RELEASE_TAG=v0.1.0
+RELEASE_SHA=099ce328a6352333238474672b078adc807c91e1
+PREVIOUS_TAG=
+
+args=(
+  repos/vexcalibur-dev/vexcalibur-action/releases/generate-notes
+  -f "tag_name=${RELEASE_TAG}"
+  -f "target_commitish=${RELEASE_SHA}"
+)
+if [[ -n "${PREVIOUS_TAG}" ]]; then
+  args+=(-f "previous_tag_name=${PREVIOUS_TAG}")
+fi
+
+gh api "${args[@]}" --jq .body > /tmp/vexcalibur-action-release-notes.md
+python -m pip install -r requirements-dev.txt
+detect-secrets-hook \
+  --baseline .secrets.baseline \
+  -- /tmp/vexcalibur-action-release-notes.md
+```
+
+If the scanner reports a real secret, rotate the exposed value and correct the
+source that generated the release note, such as the merged pull request title,
+pull request body, or commit message. Rerun the release only after the generated
+notes are safe. If the finding is a false positive, update `.secrets.baseline`
+in a pull request and document why the generated text is safe.
 
 ## Tag Policy
 
