@@ -35,6 +35,7 @@ def run_action_vexcalibur_step(
     inputs = {
         "package-spec": "vexcalibur==0.1.0",
         "allow-development-package-spec": "false",
+        "constraints-file": "",
         "args": "--help",
         **input_overrides,
     }
