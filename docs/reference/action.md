@@ -1,8 +1,7 @@
 # Vexcalibur Action Reference
 
-The Vexcalibur Action is usable for the workflows documented here, but inputs,
-default values, and exit behavior can change before the first stable action
-release.
+The Vexcalibur Action is usable for the workflows documented here. Inputs,
+default values, and exit behavior can change before a 1.0 action release.
 
 ## Runner Model
 
@@ -33,14 +32,14 @@ with:
 
 | Input | Required | Default | Contract |
 | --- | --- | --- | --- |
-| `package-spec` | Yes | None | Package spec passed to isolated `pip install`. Release workflows must use an exact release such as `vexcalibur==0.1.0`. |
+| `package-spec` | Yes | None | Package spec passed to isolated `pip install`. Release workflows must use an exact release such as `vexcalibur==0.1.1`. |
 | `allow-development-package-spec` | No | `false` | Set to `true` to allow Git URLs, local paths, or other non-release package specs in development workflows. |
 | `python-version` | No | `3.14` | Python version passed to `actions/setup-python`. |
 | `args` | No | `--help` | Newline-separated CLI arguments passed to the installed `vexcalibur` executable. Each nonblank line is one argument. |
 
 `package-spec` is validated before installation. Without
 `allow-development-package-spec: "true"`, the value must match an exact
-Vexcalibur release package spec such as `vexcalibur==0.1.0`.
+Vexcalibur release package spec such as `vexcalibur==0.1.1`.
 See the [compatibility reference](compatibility.md) for the current action tag
 and package version policy.
 
@@ -142,16 +141,17 @@ From the action repository root, run:
 
 ```bash
 python -m pip install -r requirements-dev.txt
-bash -n scripts/run-vexcalibur.sh
-shellcheck scripts/run-vexcalibur.sh
+bash -n scripts/*.sh
+git ls-files -z | xargs -0 detect-secrets-hook --baseline .secrets.baseline --
+shellcheck scripts/*.sh
 ASDF_ACTIONLINT_VERSION=1.7.12 actionlint .github/workflows/*.yml
 python -m unittest discover -s tests
 ```
 
 Expected success signal: ShellCheck and actionlint exit with status `0`, and
 `unittest` reports all tests passing. `requirements-dev.txt` installs
-ShellCheck; install actionlint through your local toolchain before running the
-full local gate.
+ShellCheck and the release-note secret scanner; install actionlint through your
+local toolchain before running the full local gate.
 
 ## Workflow Verification
 

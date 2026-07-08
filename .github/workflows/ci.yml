@@ -14,7 +14,7 @@ env:
   ACTIONLINT_VERSION: "1.7.12"
   VEXCALIBUR_SOURCE_REF: main
   VEXCALIBUR_CONTRACT_ARTIFACT: vexcalibur-contract-fixtures
-  VEXCALIBUR_RELEASE_PACKAGE_VERSION: ""
+  VEXCALIBUR_RELEASE_PACKAGE_VERSION: "0.1.1"
   VEXCALIBUR_WHEEL_ARTIFACT: vexcalibur-wheel
   VEXCALIBUR_SBOM_TO_VEX_ARTIFACT: vexcalibur-sbom-to-vex-output
 
@@ -43,8 +43,8 @@ jobs:
 
       - name: Validate shell
         run: |
-          bash -n scripts/run-vexcalibur.sh
-          shellcheck scripts/run-vexcalibur.sh
+          bash -n scripts/*.sh
+          shellcheck scripts/*.sh
 
       - name: Validate GitHub Actions
         run: actionlint
@@ -71,6 +71,9 @@ jobs:
                   json.load(stream)
               print(f"JSON OK {path}")
           PY
+
+      - name: Scan code for secrets
+        run: git ls-files -z | xargs -0 detect-secrets-hook --baseline .secrets.baseline --
 
       - name: Run unit tests
         run: python -m unittest discover -s tests

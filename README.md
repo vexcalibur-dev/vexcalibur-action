@@ -7,9 +7,8 @@
 
 GitHub Action wrapper for [Vexcalibur](https://github.com/vexcalibur-dev/vexcalibur).
 
-The action is usable for development and compatibility testing today. Stable
-production workflows should wait for a trusted action release commit and an
-exact Vexcalibur package release.
+Use immutable action release tags with exact Vexcalibur package releases for
+reviewable production workflows. Use `main` only for development smoke tests.
 
 Current workflows:
 
@@ -80,24 +79,21 @@ jobs:
 
 ## Release Usage
 
-These examples describe the intended stable interface, but they are not runnable until
-Vexcalibur publishes its first PyPI package and this action publishes a release.
-Replace `ACTION_RELEASE_COMMIT_SHA` with the full action commit SHA for the release.
 Release workflows should pin both the action and the package to trusted versions.
 See the [compatibility reference](docs/reference/compatibility.md) for the
 current action tag and package version policy.
 
 ```yaml
-- uses: vexcalibur-dev/vexcalibur-action@ACTION_RELEASE_COMMIT_SHA
+- uses: vexcalibur-dev/vexcalibur-action@v0.1.0
   with:
-    package-spec: vexcalibur==0.1.0
+    package-spec: vexcalibur==0.1.1
     args: --help
 ```
 
 ```yaml
-- uses: vexcalibur-dev/vexcalibur-action@ACTION_RELEASE_COMMIT_SHA
+- uses: vexcalibur-dev/vexcalibur-action@v0.1.0
   with:
-    package-spec: vexcalibur==0.1.0
+    package-spec: vexcalibur==0.1.1
     args: |
       query-osv
       --allow-public-osv
@@ -136,15 +132,16 @@ Run local checks:
 
 ```bash
 python -m pip install -r requirements-dev.txt
-bash -n scripts/run-vexcalibur.sh
-shellcheck scripts/run-vexcalibur.sh
+bash -n scripts/*.sh
+git ls-files -z | xargs -0 detect-secrets-hook --baseline .secrets.baseline --
+shellcheck scripts/*.sh
 ASDF_ACTIONLINT_VERSION=1.7.12 actionlint .github/workflows/*.yml
 python -m unittest discover -s tests
 ```
 
-`requirements-dev.txt` installs ShellCheck. Install actionlint through your local
-toolchain before running the full local gate. Hosted CI installs actionlint
-before running it.
+`requirements-dev.txt` installs ShellCheck and the release-note secret scanner.
+Install actionlint through your local toolchain before running the full local
+gate. Hosted CI installs actionlint before running it.
 
 ## Project Links
 

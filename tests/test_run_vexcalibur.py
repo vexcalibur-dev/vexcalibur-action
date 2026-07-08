@@ -245,11 +245,11 @@ class RunVexcaliburScriptTests(unittest.TestCase):
             root = Path(tmpdir)
             managed_calls = root / "managed-calls.txt"
             python_calls = root / "python-calls.txt"
-            secret_arg = "pkg:internal/secret-component@1.0"
+            private_arg = "pkg:internal/private-component@1.0"
             env = managed_install_env(root, managed_calls, python_calls)
             env.update(
                 {
-                    "VEXCALIBUR_ARGS": f"query-osv\n--\n{secret_arg}",
+                    "VEXCALIBUR_ARGS": f"query-osv\n--\n{private_arg}",
                     "args": "caller-exported-lowercase-args",
                 }
             )
@@ -257,9 +257,9 @@ class RunVexcaliburScriptTests(unittest.TestCase):
             result = run_script(env)
 
             self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertEqual(managed_calls.read_text(), f"query-osv\n--\n{secret_arg}\n")
+            self.assertEqual(managed_calls.read_text(), f"query-osv\n--\n{private_arg}\n")
             python_log = python_calls.read_text()
-            self.assertNotIn(secret_arg, python_log)
+            self.assertNotIn(private_arg, python_log)
             self.assertNotIn("caller-exported-lowercase-args", python_log)
             self.assertIn("VEXCALIBUR_ACTION_PURLS=\n", python_log)
             self.assertIn("VEXCALIBUR_ACTION_ARGS=\n", python_log)
