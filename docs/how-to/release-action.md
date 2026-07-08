@@ -33,7 +33,7 @@ Commit messages.
 | `feat:` | Minor version bump |
 | `fix:`, `perf:`, `refactor:`, `deps:`, `revert:`, `build(deps):`, `chore(deps):`, or `Revert "` | Patch version bump |
 | `docs:`, `test:`, `ci:`, or other non-release commit types | No release |
-| Commit message includes `[skip release]` or `[release skip]` | No release |
+| Current HEAD or merge commit message includes `[skip release]` or `[release skip]` | No release |
 | Manual `workflow_dispatch` version | Exact requested version, if it is greater than the latest tag or recovers an existing tag on the current commit |
 
 Manual versions must use `MAJOR.MINOR.PATCH` with no leading zeros. Prefixing the
@@ -50,7 +50,7 @@ manual version with `v` is accepted.
 
 ```bash
 gh release view v0.1.0 --repo vexcalibur-dev/vexcalibur-action
-git ls-remote --tags https://github.com/vexcalibur-dev/vexcalibur-action.git v0.1.0
+git ls-remote --tags https://github.com/vexcalibur-dev/vexcalibur-action.git 'v0.1.0^{}'
 ```
 
 Expected success signal: the release exists, the tag points at the merge commit,
