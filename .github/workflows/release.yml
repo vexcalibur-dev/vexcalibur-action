@@ -85,6 +85,7 @@ jobs:
           for _ in {1..90}; do
             run_json="$(
               gh run list \
+                --repo "${GITHUB_REPOSITORY}" \
                 --workflow ci.yml \
                 --branch main \
                 --commit "${RELEASE_SHA}" \
