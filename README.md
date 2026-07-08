@@ -7,8 +7,9 @@
 
 GitHub Action wrapper for [Vexcalibur](https://github.com/vexcalibur-dev/vexcalibur).
 
-Use immutable action release tags with exact Vexcalibur package releases for
-reviewable production workflows. Use `main` only for development smoke tests.
+Use versioned action release tags with exact Vexcalibur package releases for
+reviewable workflows. Pin the full release commit SHA when a workflow requires
+immutable action pinning. Use `main` only for development smoke tests.
 
 Current workflows:
 
@@ -20,8 +21,8 @@ Current workflows:
 
 ## Development Quick Start
 
-This is the runnable pre-release path for development smoke tests. CI validates
-the same action/package compatibility path by building a Vexcalibur wheel from
+This is the runnable path for development smoke tests. CI validates the same
+action/package compatibility path by building a Vexcalibur wheel from
 `vexcalibur-dev/vexcalibur@main`; the examples below install that same
 development branch directly. If you are testing an unmerged action PR, replace
 `@main` with the PR branch or full action commit SHA you are validating.
@@ -81,7 +82,8 @@ jobs:
 
 Release workflows should pin both the action and the package to trusted versions.
 See the [compatibility reference](docs/reference/compatibility.md) for the
-current action tag and package version policy.
+current action tag and package version policy. Replace `@v0.1.0` with the full
+release commit SHA when your organization requires immutable action pinning.
 
 ```yaml
 - uses: vexcalibur-dev/vexcalibur-action@v0.1.0
@@ -148,6 +150,7 @@ gate. Hosted CI installs actionlint before running it.
 - [Action reference](docs/reference/action.md)
 - [Generate VEX from an SBOM](docs/how-to/generate-vex-from-sbom.md)
 - [Compatibility reference](docs/reference/compatibility.md)
+- [Release the action](docs/how-to/release-action.md)
 - [Security policy](SECURITY.md)
 - [Contributing](CONTRIBUTING.md)
 - [License](LICENSE)

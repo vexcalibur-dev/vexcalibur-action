@@ -117,6 +117,16 @@ fi
 if [[ -n "${manual_version}" ]]; then
   next_version="$(normalize_version "${manual_version}")"
   require_version "${next_version}"
+  next_tag="v${next_version}"
+
+  if [[ -n "${latest_tag}" ]] && [[ "${next_tag}" == "${latest_tag}" ]] && [[ "$(tag_commit "${latest_tag}")" == "${head_sha}" ]]; then
+    emit skip false
+    emit tag "${latest_tag}"
+    emit version "${next_version}"
+    emit previous_tag "${previous_tag}"
+    emit bump existing
+    exit 0
+  fi
 
   if ! version_gt "${next_version}" "${base_version}"; then
     printf 'manual version %s must be greater than base version %s\n' "${next_version}" "${base_version}" >&2
@@ -124,7 +134,7 @@ if [[ -n "${manual_version}" ]]; then
   fi
 
   emit skip false
-  emit tag "v${next_version}"
+  emit tag "${next_tag}"
   emit version "${next_version}"
   emit previous_tag "${base_tag}"
   emit bump manual

@@ -126,16 +126,6 @@ jobs:
     permissions:
       contents: read
     steps:
-      - name: Generate app token
-        id: app-token
-        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
-        with:
-          client-id: ${{ vars.AUTOMATION_CLIENT_ID }}
-          private-key: ${{ secrets.AUTOMATION_SECRET }}
-          owner: ${{ github.repository_owner }}
-          repositories: ${{ github.event.repository.name }}
-          permission-contents: write
-
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
@@ -145,7 +135,7 @@ jobs:
 
       - name: Require current main tip
         env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          GH_TOKEN: ${{ github.token }}
           RELEASE_SHA: ${{ needs.resolve.outputs.sha }}
         run: |
           set -euo pipefail
@@ -157,6 +147,47 @@ jobs:
             echo "Release SHA: ${RELEASE_SHA}" >&2
             exit 1
           fi
+
+      - name: Verify compatibility table
+        env:
+          RELEASE_TAG: ${{ needs.resolve.outputs.tag }}
+          RELEASE_VERSION: ${{ needs.resolve.outputs.version }}
+        run: |
+          set -euo pipefail
+
+          python - <<'PY'
+          from pathlib import Path
+          import os
+          import re
+
+          release_tag = os.environ["RELEASE_TAG"]
+          release_version = os.environ["RELEASE_VERSION"]
+          if release_tag != f"v{release_version}":
+              raise SystemExit(f"release tag {release_tag!r} does not match version {release_version!r}")
+
+          ci_text = Path(".github/workflows/ci.yml").read_text(encoding="utf-8")
+          version_match = re.search(
+              r'^\s*VEXCALIBUR_RELEASE_PACKAGE_VERSION:\s*"([^"]+)"\s*$',
+              ci_text,
+              re.MULTILINE,
+          )
+          if version_match is None:
+              raise SystemExit("could not find VEXCALIBUR_RELEASE_PACKAGE_VERSION in ci.yml")
+
+          package_spec = f"vexcalibur=={version_match.group(1)}"
+          compatibility_text = Path("docs/reference/compatibility.md").read_text(encoding="utf-8")
+          row_pattern = re.compile(
+              rf"^\|\s*`{re.escape(release_tag)}`\s*\|\s*`{re.escape(package_spec)}`\s*\|",
+              re.MULTILINE,
+          )
+          if row_pattern.search(compatibility_text) is None:
+              raise SystemExit(
+                  "docs/reference/compatibility.md must include a row for "
+                  f"{release_tag} with `{package_spec}` before publishing"
+              )
+
+          print(f"Compatibility table includes {release_tag} with {package_spec}.")
+          PY
 
       - name: Set up Python
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
@@ -171,7 +202,6 @@ jobs:
           RELEASE_TAG: ${{ needs.resolve.outputs.tag }}
           PREVIOUS_TAG: ${{ needs.resolve.outputs.previous_tag }}
           RELEASE_SHA: ${{ needs.resolve.outputs.sha }}
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           set -euo pipefail
 
@@ -184,10 +214,20 @@ jobs:
             args+=(-f "previous_tag_name=${PREVIOUS_TAG}")
           fi
 
-          gh api "${args[@]}" --jq .body > /tmp/vexcalibur-action-release-notes.md
+          GH_TOKEN="${{ github.token }}" gh api "${args[@]}" --jq .body > /tmp/vexcalibur-action-release-notes.md
           detect-secrets-hook \
             --baseline .secrets.baseline \
             -- /tmp/vexcalibur-action-release-notes.md
+
+      - name: Generate app token
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ vars.AUTOMATION_CLIENT_ID }}
+          private-key: ${{ secrets.AUTOMATION_SECRET }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+          permission-contents: write
 
       - name: Create release tag
         env:

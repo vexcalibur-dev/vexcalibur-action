@@ -126,7 +126,7 @@ vulnerability IDs, counts, and ordering can change.
 | Condition | Exit code | Message shape |
 | --- | --- | --- |
 | Vexcalibur CLI succeeds | `0` | CLI output appears in the workflow log. |
-| `package-spec` is missing | `2` | `package-spec is required until a stable Vexcalibur release is published`. |
+| `package-spec` is missing | `2` | `package-spec is required`. |
 | `package-spec` is not an exact release and development specs are not allowed | `2` | `package-spec must be an exact Vexcalibur release...`. |
 | Runner Python is missing or not executable | `2` | The message names the missing or invalid runner Python value. |
 | `RUNNER_TEMP` is missing | `2` | `RUNNER_TEMP is required to isolate the Vexcalibur installation`. |

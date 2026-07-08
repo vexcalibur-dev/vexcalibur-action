@@ -9,9 +9,9 @@ boundaries.
 | Action ref | Vexcalibur package spec | Python versions verified by this repo | Status |
 | --- | --- | --- | --- |
 | `main` | Development specs only, including a wheel built from `vexcalibur-dev/vexcalibur@main` in CI | `3.10`, `3.14` | Mutable development branch, not a stable release |
-| `v0.1.0` | `vexcalibur==0.1.1` | `3.10`, `3.14` | Initial immutable pre-1.0 action release |
+| `v0.1.0` | `vexcalibur==0.1.1` | `3.10`, `3.14` | Initial pre-1.0 action release |
 
-Do not use `main` for production workflows. Stable workflows should pin a
+Do not use `main` for production workflows. Release workflows should pin a
 trusted action release ref and an exact package release, for example
 `package-spec: vexcalibur==0.1.1`.
 
@@ -24,7 +24,7 @@ For pre-1.0 releases, each action tag supports only the exact Vexcalibur package
 versions named in this compatibility table and the release notes. Broader
 package ranges must be added explicitly after CI verifies them.
 
-Every stable action release must update this page in the same pull request or
+Every versioned action release must update this page in the same pull request or
 release-preparation pull request. If a release exists but is missing from the
 table, treat the release process as incomplete.
 
@@ -34,12 +34,18 @@ official release version. This prevents a third-party PyPI namespace claim or an
 unexpected package release from silently becoming trusted test input.
 
 Action releases are created by `.github/workflows/release.yml` on pushes to
-`main` and by manual dispatch. The workflow computes immutable `vX.Y.Z` tags
-from Conventional Commit messages with `scripts/next-release-tag.sh`, waits for
-the CI workflow to pass for the exact release SHA, scans generated release notes
-for secrets, then uses the organization automation GitHub App to create the tag
-and GitHub Release. The workflow does not create or update moving compatibility
-tags such as `v1`.
+`main` and by manual dispatch. The workflow computes `vX.Y.Z` tags from
+Conventional Commit messages with `scripts/next-release-tag.sh`, verifies that
+this table already includes the computed action tag and current expected package
+version, waits for the CI workflow to pass for the exact release SHA, scans
+generated release notes for secrets without a write-capable token in scope, then
+uses the organization automation GitHub App to create the tag and GitHub
+Release. The workflow does not create or update moving compatibility tags such
+as `v1`. Pin the full release commit SHA when a consuming workflow requires
+immutable action pinning.
+
+See [Release the action](../how-to/release-action.md) for maintainer
+prerequisites, bump rules, verification steps, and failure handling.
 
 ## CI Compatibility Contract
 
