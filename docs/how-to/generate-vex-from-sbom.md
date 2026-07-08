@@ -13,20 +13,20 @@ SBOM-derived inventory to a public service.
 - A local Vexcalibur findings JSON file when using the no-network path.
 - A trusted Vexcalibur Action ref and package spec.
 
-Before the first stable release, development workflows must use a Git package
-spec and set `allow-development-package-spec: "true"`. After releases begin,
-pin the action to a trusted release commit and use an exact package spec such as
-`vexcalibur==0.1.0`.
+For reviewed workflows, pin the action to a release ref or full release commit
+SHA and use the package spec named in the
+[compatibility reference](../reference/compatibility.md), such as
+`vexcalibur==0.1.1`. Development workflows that use Git package specs, local
+wheels, or source checkouts must set `allow-development-package-spec: "true"`.
 
 ## No-Network Workflow
 
 This workflow checks out the repository, runs `vexcalibur generate` in offline
 mode, verifies the output shape, and uploads the generated VEX JSON.
 
-The example uses mutable development refs because no stable action or package
-release exists yet. For a trusted production workflow, replace `@main` with a
-reviewed action release commit and replace the Git package spec with an exact
-published package version.
+The example uses the current release pair from the compatibility table. Replace
+`@v0.1.0` with the full release commit SHA when your organization requires
+immutable action pinning.
 
 ```yaml
 name: Generate VEX
@@ -50,10 +50,9 @@ jobs:
         run: mkdir -p "$RUNNER_TEMP/vexcalibur"
 
       - name: Generate VEX
-        uses: vexcalibur-dev/vexcalibur-action@main
+        uses: vexcalibur-dev/vexcalibur-action@v0.1.0
         with:
-          package-spec: git+https://github.com/vexcalibur-dev/vexcalibur.git@main
-          allow-development-package-spec: "true"
+          package-spec: vexcalibur==0.1.1
           args: |
             generate
             sbom/cyclonedx.xml
@@ -89,6 +88,17 @@ jobs:
 
 Expected success signal: the workflow passes and uploads a `cyclonedx-vex`
 artifact containing `cyclonedx-vex.json`.
+
+For development testing against the latest Vexcalibur CLI source, use `@main`
+with a Git package spec and explicitly allow development packages:
+
+```yaml
+- uses: vexcalibur-dev/vexcalibur-action@main
+  with:
+    package-spec: git+https://github.com/vexcalibur-dev/vexcalibur.git@main
+    allow-development-package-spec: "true"
+    args: --help
+```
 
 ## Argument Handling
 

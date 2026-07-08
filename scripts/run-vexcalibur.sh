@@ -38,7 +38,7 @@ unset_python_tool_env() {
 
 validate_package_spec() {
   if [[ -z "$package_spec" ]]; then
-    echo "package-spec is required until a stable Vexcalibur release is published" >&2
+    echo "package-spec is required" >&2
     exit 2
   fi
 
@@ -50,7 +50,7 @@ validate_package_spec() {
     return
   fi
 
-  echo "package-spec must be an exact Vexcalibur release such as vexcalibur==0.1.0" >&2
+  echo "package-spec must be an exact Vexcalibur release such as vexcalibur==0.1.1" >&2
   echo "set allow-development-package-spec to true only for development workflows" >&2
   exit 2
 }

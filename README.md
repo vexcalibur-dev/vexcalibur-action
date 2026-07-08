@@ -7,9 +7,9 @@
 
 GitHub Action wrapper for [Vexcalibur](https://github.com/vexcalibur-dev/vexcalibur).
 
-The action is usable for development and compatibility testing today. Stable
-production workflows should wait for a trusted action release commit and an
-exact Vexcalibur package release.
+Use versioned action release tags with exact Vexcalibur package releases for
+reviewable workflows. Pin the full release commit SHA when a workflow requires
+immutable action pinning. Use `main` only for development smoke tests.
 
 Current workflows:
 
@@ -21,8 +21,8 @@ Current workflows:
 
 ## Development Quick Start
 
-This is the runnable pre-release path for development smoke tests. CI validates
-the same action/package compatibility path by building a Vexcalibur wheel from
+This is the runnable path for development smoke tests. CI validates the same
+action/package compatibility path by building a Vexcalibur wheel from
 `vexcalibur-dev/vexcalibur@main`; the examples below install that same
 development branch directly. If you are testing an unmerged action PR, replace
 `@main` with the PR branch or full action commit SHA you are validating.
@@ -80,24 +80,22 @@ jobs:
 
 ## Release Usage
 
-These examples describe the intended stable interface, but they are not runnable until
-Vexcalibur publishes its first PyPI package and this action publishes a release.
-Replace `ACTION_RELEASE_COMMIT_SHA` with the full action commit SHA for the release.
 Release workflows should pin both the action and the package to trusted versions.
 See the [compatibility reference](docs/reference/compatibility.md) for the
-current action tag and package version policy.
+current action tag and package version policy. Replace `@v0.1.0` with the full
+release commit SHA when your organization requires immutable action pinning.
 
 ```yaml
-- uses: vexcalibur-dev/vexcalibur-action@ACTION_RELEASE_COMMIT_SHA
+- uses: vexcalibur-dev/vexcalibur-action@v0.1.0
   with:
-    package-spec: vexcalibur==0.1.0
+    package-spec: vexcalibur==0.1.1
     args: --help
 ```
 
 ```yaml
-- uses: vexcalibur-dev/vexcalibur-action@ACTION_RELEASE_COMMIT_SHA
+- uses: vexcalibur-dev/vexcalibur-action@v0.1.0
   with:
-    package-spec: vexcalibur==0.1.0
+    package-spec: vexcalibur==0.1.1
     args: |
       query-osv
       --allow-public-osv
@@ -136,21 +134,23 @@ Run local checks:
 
 ```bash
 python -m pip install -r requirements-dev.txt
-bash -n scripts/run-vexcalibur.sh
-shellcheck scripts/run-vexcalibur.sh
+bash -n scripts/*.sh
+git ls-files -z | xargs -0 detect-secrets-hook --baseline .secrets.baseline --
+shellcheck scripts/*.sh
 ASDF_ACTIONLINT_VERSION=1.7.12 actionlint .github/workflows/*.yml
 python -m unittest discover -s tests
 ```
 
-`requirements-dev.txt` installs ShellCheck. Install actionlint through your local
-toolchain before running the full local gate. Hosted CI installs actionlint
-before running it.
+`requirements-dev.txt` installs ShellCheck and the release-note secret scanner.
+Install actionlint through your local toolchain before running the full local
+gate. Hosted CI installs actionlint before running it.
 
 ## Project Links
 
 - [Action reference](docs/reference/action.md)
 - [Generate VEX from an SBOM](docs/how-to/generate-vex-from-sbom.md)
 - [Compatibility reference](docs/reference/compatibility.md)
+- [Release the action](docs/how-to/release-action.md)
 - [Security policy](SECURITY.md)
 - [Contributing](CONTRIBUTING.md)
 - [License](LICENSE)
