@@ -50,8 +50,9 @@ manual version with `v` is accepted.
 5. Verify that the tag and GitHub Release exist:
 
 ```bash
-gh release view v0.1.0 --repo vexcalibur-dev/vexcalibur-action
-git ls-remote --tags https://github.com/vexcalibur-dev/vexcalibur-action.git 'v0.1.0^{}'
+RELEASE_TAG=v0.2.0
+gh release view "${RELEASE_TAG}" --repo vexcalibur-dev/vexcalibur-action
+git ls-remote --tags https://github.com/vexcalibur-dev/vexcalibur-action.git "${RELEASE_TAG}^{}"
 ```
 
 Expected success signal: the release exists, the tag points at the merge commit,
@@ -65,7 +66,7 @@ release where the tag was created but the GitHub Release was not.
 1. Open the `Release` workflow in GitHub Actions.
 2. Select `Run workflow`.
 3. Keep the branch as `main`.
-4. Enter the version as `MAJOR.MINOR.PATCH`, such as `0.1.0`.
+4. Enter the version as `MAJOR.MINOR.PATCH`, such as `0.2.0`.
 5. Start the workflow and verify the same success signals as an automatic
    release.
 
@@ -88,8 +89,8 @@ To inspect a release-note secret scan failure locally, reconstruct the generated
 notes body and run the same scanner:
 
 ```bash
-RELEASE_TAG=v0.1.0
-RELEASE_SHA=099ce328a6352333238474672b078adc807c91e1
+RELEASE_TAG=v0.2.0
+RELEASE_SHA=REPLACE_WITH_RELEASE_COMMIT_SHA
 PREVIOUS_TAG=
 
 args=(

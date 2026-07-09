@@ -82,18 +82,18 @@ jobs:
 
 Release workflows should pin both the action and the package to trusted versions.
 See the [compatibility reference](docs/reference/compatibility.md) for the
-current action tag and package version policy. Replace `@v0.1.0` with the full
+current action tag and package version policy. Replace `@v0.2.0` with the full
 release commit SHA when your organization requires immutable action pinning.
 
 ```yaml
-- uses: vexcalibur-dev/vexcalibur-action@v0.1.0
+- uses: vexcalibur-dev/vexcalibur-action@v0.2.0
   with:
     package-spec: vexcalibur==0.1.1
     args: --help
 ```
 
 ```yaml
-- uses: vexcalibur-dev/vexcalibur-action@v0.1.0
+- uses: vexcalibur-dev/vexcalibur-action@v0.2.0
   with:
     package-spec: vexcalibur==0.1.1
     args: |
@@ -109,9 +109,9 @@ resolved from PyPI at run time. Supply-chain-sensitive workflows should also
 pin those with a checked-in pip constraints file:
 
 ```yaml
-- uses: vexcalibur-dev/vexcalibur-action@ACTION_RELEASE_COMMIT_SHA
+- uses: vexcalibur-dev/vexcalibur-action@v0.2.0
   with:
-    package-spec: vexcalibur==0.1.0
+    package-spec: vexcalibur==0.1.1
     constraints-file: ${{ github.workspace }}/.github/vexcalibur-constraints.txt
     args: --help
 ```

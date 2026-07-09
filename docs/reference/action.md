@@ -58,7 +58,7 @@ it, and pass its absolute path:
 
 ```yaml
 with:
-  package-spec: vexcalibur==0.1.0
+  package-spec: vexcalibur==0.1.1
   constraints-file: ${{ github.workspace }}/.github/vexcalibur-constraints.txt
 ```
 
