@@ -25,7 +25,7 @@ This workflow checks out the repository, runs `vexcalibur generate` in offline
 mode, verifies the output shape, and uploads the generated VEX JSON.
 
 The example uses the current release pair from the compatibility table. Replace
-`@v0.1.0` with the full release commit SHA when your organization requires
+`@v0.2.0` with the full release commit SHA when your organization requires
 immutable action pinning.
 
 ```yaml
@@ -50,7 +50,7 @@ jobs:
         run: mkdir -p "$RUNNER_TEMP/vexcalibur"
 
       - name: Generate VEX
-        uses: vexcalibur-dev/vexcalibur-action@v0.1.0
+        uses: vexcalibur-dev/vexcalibur-action@v0.2.0
         with:
           package-spec: vexcalibur==0.1.1
           args: |

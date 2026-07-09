@@ -21,12 +21,13 @@ request issue form in this repository and include no sensitive details.
 | Version line | Supported | Notes |
 | --- | --- | --- |
 | `main` | Yes | Default development branch. Security fixes land here first. |
-| `v0.1.x` | Yes | Supported while it is the latest pre-1.0 action release line. |
+| `v0.2.x` | Yes | Latest pre-1.0 action release line. |
+| `v0.1.x` | No | Upgrade to the latest documented release pair. |
 | Older pre-1.0 lines | No | Upgrade to the latest documented release pair. |
 
 Pre-1.0 action releases support only the Vexcalibur package versions listed in
 the [compatibility table](docs/reference/compatibility.md). Security fixes that
-affect released action behavior are released as a new `v0.1.x` tag when the
+affect released action behavior are released as a new `v0.2.x` tag when the
 fix can be carried without breaking the documented action inputs. If a fix
 requires an incompatible action contract, the release notes and compatibility
 table document the required upgrade path.
