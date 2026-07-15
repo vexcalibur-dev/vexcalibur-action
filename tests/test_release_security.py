@@ -166,6 +166,16 @@ class ReleaseWorkflowBoundaryTests(unittest.TestCase):
             for step in job["steps"]:
                 self.assertNotEqual(step.get("id"), "publication-token")
 
+    def test_trusted_release_checkouts_use_the_workflow_sha(self) -> None:
+        for job_name in ("scan-release-notes", "publish-release"):
+            step_name = (
+                "Checkout scanner policy"
+                if job_name == "scan-release-notes"
+                else "Checkout"
+            )
+            checkout = step_named(self.jobs[job_name], step_name)
+            self.assertEqual(checkout["with"]["ref"], "${{ github.sha }}")
+
     def test_artifact_digest_is_verified_at_each_boundary(self) -> None:
         generator = self.jobs["generate-release-notes"]
         scanner = self.jobs["scan-release-notes"]

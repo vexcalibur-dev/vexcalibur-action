@@ -1,0 +1,14 @@
+# Danny Sauer is the primary maintainer for the Vexcalibur Action.
+* @dannysauer
+
+# These paths control the consumer contract and release boundary.
+/.github/CODEOWNERS @dannysauer
+/.github/actions/ @dannysauer
+/.github/workflows/ @dannysauer
+/action.yml @dannysauer
+/scripts/ @dannysauer
+/requirements-dev.in @dannysauer
+/requirements-dev.txt @dannysauer
+/requirements-release.in @dannysauer
+/requirements-release.txt @dannysauer
+/tests/test_release_security.py @dannysauer
