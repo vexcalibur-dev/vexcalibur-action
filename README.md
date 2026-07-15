@@ -5,27 +5,13 @@
 [![CI](https://github.com/vexcalibur-dev/vexcalibur-action/actions/workflows/ci.yml/badge.svg)](https://github.com/vexcalibur-dev/vexcalibur-action/actions/workflows/ci.yml)
 [![OpenSSF Scorecard](https://github.com/vexcalibur-dev/vexcalibur-action/actions/workflows/scorecard.yml/badge.svg)](https://github.com/vexcalibur-dev/vexcalibur-action/actions/workflows/scorecard.yml)
 
-GitHub Action wrapper for [Vexcalibur](https://github.com/vexcalibur-dev/vexcalibur).
+Vexcalibur Action runs the [Vexcalibur command-line interface (CLI)](https://github.com/vexcalibur-dev/vexcalibur) in a GitHub Actions workflow. Use it to generate Vulnerability Exploitability eXchange (VEX) from a software bill of materials (SBOM), query a service that implements the Open Source Vulnerabilities (OSV) API, or run another Vexcalibur command without maintaining a separate installation step.
 
-Use versioned action release tags with exact Vexcalibur package releases for
-reviewable workflows. Pin the full release commit SHA when a workflow requires
-immutable action pinning. Use `main` only for development smoke tests.
+The action is pre-1.0. Each action release is tested with specific Vexcalibur package versions; the current pair is `vexcalibur-action@v0.2.0` with `vexcalibur==0.1.1`. Current continuous integration (CI) exercises the wrapper on `ubuntu-latest`.
 
-Current workflows:
+## Try the action
 
-- Run Vexcalibur help and package URL queries in CI.
-- Generate CycloneDX 1.6 VEX JSON from SBOMs with local findings or
-  OSV-compatible providers.
-- Validate the action/package boundary against a wheel built from
-  `vexcalibur-dev/vexcalibur@main`.
-
-## Development Quick Start
-
-This is the runnable path for development smoke tests. CI validates the same
-action/package compatibility path by building a Vexcalibur wheel from
-`vexcalibur-dev/vexcalibur@main`; the examples below install that same
-development branch directly. If you are testing an unmerged action PR, replace
-`@main` with the PR branch or full action commit SHA you are validating.
+This workflow installs the current release pair and prints the Vexcalibur help. It doesn't check out your repository or query a vulnerability service.
 
 ```yaml
 name: Vexcalibur
@@ -36,77 +22,34 @@ on:
 permissions: {}
 
 jobs:
-  vexcalibur:
+  help:
     runs-on: ubuntu-latest
     steps:
-      - uses: vexcalibur-dev/vexcalibur-action@main
+      - name: Run Vexcalibur
+        uses: vexcalibur-dev/vexcalibur-action@v0.2.0
         with:
-          package-spec: git+https://github.com/vexcalibur-dev/vexcalibur.git@main
-          allow-development-package-spec: "true"
+          package-spec: vexcalibur==0.1.1
           args: --help
 ```
 
-Save that as `.github/workflows/vexcalibur.yml` in a test repository. The
-successful result is a passing workflow with Vexcalibur help output in the action
-logs.
+Save the file as `.github/workflows/vexcalibur.yml` and commit it to the repository's default branch. Run **Vexcalibur** from the **Actions** tab, then open the **Run Vexcalibur** log. A passing job with Vexcalibur's command help is the success signal.
 
-OSV-backed Vexcalibur commands can send package URLs, versions, or
-SBOM-derived inventory to the public OSV service. Pass `--allow-public-osv`
-only when that data sharing is acceptable for the workflow.
+To produce an artifact from an existing SBOM, follow [Generate VEX from an SBOM](docs/how-to/generate-vex-from-sbom.md).
 
-```yaml
-name: Vexcalibur OSV Query
+## Choose what to trust
 
-on:
-  workflow_dispatch:
-
-permissions: {}
-
-jobs:
-  vexcalibur:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: vexcalibur-dev/vexcalibur-action@main
-        with:
-          package-spec: git+https://github.com/vexcalibur-dev/vexcalibur.git@main
-          allow-development-package-spec: "true"
-          args: |
-            query-osv
-            --allow-public-osv
-            --
-            pkg:pypi/django@1.2
-            pkg:npm/minimist@0.0.8
-```
-
-## Release Usage
-
-Release workflows should pin both the action and the package to trusted versions.
-See the [compatibility reference](docs/reference/compatibility.md) for the
-current action tag and package version policy. Replace `@v0.2.0` with the full
-release commit SHA when your organization requires immutable action pinning.
+The action and the Python package are separate trust boundaries. Pin both in reviewed workflows:
 
 ```yaml
-- uses: vexcalibur-dev/vexcalibur-action@v0.2.0
+- uses: vexcalibur-dev/vexcalibur-action@6a028a18b4b7fc15cd5e83056e0013ed0928a483 # v0.2.0
   with:
     package-spec: vexcalibur==0.1.1
     args: --help
 ```
 
-```yaml
-- uses: vexcalibur-dev/vexcalibur-action@v0.2.0
-  with:
-    package-spec: vexcalibur==0.1.1
-    args: |
-      query-osv
-      --allow-public-osv
-      --
-      pkg:pypi/django@1.2
-      pkg:npm/minimist@0.0.8
-```
+An action release tag is readable, but a full release commit SHA is immutable. The example above uses the commit for `v0.2.0`. The [compatibility reference](docs/reference/compatibility.md) lists tested action and package pairs.
 
-`package-spec` pins the Vexcalibur version, but transitive dependencies are
-resolved from PyPI at run time. Supply-chain-sensitive workflows should also
-pin those with a checked-in pip constraints file:
+An exact `package-spec` doesn't pin transitive Python dependencies. For repeatable installs, commit a pip constraints file and pass its absolute path:
 
 ```yaml
 - uses: vexcalibur-dev/vexcalibur-action@v0.2.0
@@ -116,53 +59,50 @@ pin those with a checked-in pip constraints file:
     args: --help
 ```
 
-## Inputs
+The action rejects Git URLs, local wheels, and other development package specs unless you set `allow-development-package-spec: "true"`. See the [action reference](docs/reference/action.md) before using a development spec.
 
-See the [action reference](docs/reference/action.md) for inputs, defaults,
-argument handling, output behavior, exit behavior, and verification commands.
+## Know when data leaves the runner
 
-## SBOM-To-VEX Workflows
+Installing a PyPI or Git package uses the network. Vexcalibur commands may also contact GitHub or an Open Source Vulnerabilities (OSV) service, depending on their arguments.
 
-Use [Generate VEX from an SBOM](docs/how-to/generate-vex-from-sbom.md) for a
-runnable CI workflow that checks out repository fixtures, runs
-`vexcalibur generate`, writes a CycloneDX VEX JSON artifact, and uploads it with
-`actions/upload-artifact`.
+The Vexcalibur CLI refuses to send package URLs, versions, or SBOM inventory to `https://api.osv.dev` unless `--allow-public-osv` is present. Don't add that flag for private inventory without approval. Use local findings or an approved private OSV-compatible endpoint instead.
 
-## Runtime Behavior
+## How it runs
 
-By default, the action requires an exact `vexcalibur==...` package spec and runs
-the binary installed into its private virtual environment. Non-release package
-specs require `allow-development-package-spec: "true"`.
+The action selects Python and creates a private virtual environment under `RUNNER_TEMP`. It installs `package-spec` there, then invokes the installed `vexcalibur` executable. Each nonblank line in `args` becomes one CLI argument.
 
-The action does not honor caller-provided executable paths. Tests that need a
-fake Vexcalibur command should provide a local package spec and let the action
-install it through the same managed virtual environment used by normal
-workflows. See [action reference](docs/reference/action.md) for the full runtime
-contract.
+The CLI runs from the action's private temporary directory, not from your repository. Use absolute paths such as `${{ github.workspace }}/sbom.json` for inputs and `${{ runner.temp }}/vex.json` for outputs.
 
-## Development
+See the [action reference](docs/reference/action.md) for every input, path and argument rules, installation isolation, output behavior, and failure codes.
 
-Run local checks:
+## Documentation
+
+| If you want to… | Read… |
+| --- | --- |
+| Generate and upload VEX from a checked-out SBOM | [Generate VEX from an SBOM](docs/how-to/generate-vex-from-sbom.md) |
+| Configure an action input or diagnose a failed run | [Action reference](docs/reference/action.md) |
+| Choose an action and package version | [Compatibility reference](docs/reference/compatibility.md) |
+| Publish or recover an action release | [Release the action](docs/how-to/release-action.md) |
+| Change the wrapper or its tests | [Contributing](CONTRIBUTING.md) |
+| Report a non-security bug or request a feature | [Vexcalibur Action issues](https://github.com/vexcalibur-dev/vexcalibur-action/issues) |
+| Report a vulnerability | [Security policy](SECURITY.md) |
+| Understand participation expectations | [Code of conduct](https://github.com/vexcalibur-dev/.github/blob/main/CODE_OF_CONDUCT.md) |
+
+The Vexcalibur repository owns the [CLI reference](https://github.com/vexcalibur-dev/vexcalibur/blob/main/docs/reference/cli.md), input formats, and generated VEX contract.
+
+## Verify a local change
+
+Run these commands from the repository root after installing Python 3.14 and [actionlint 1.7.12](https://github.com/rhysd/actionlint/releases/tag/v1.7.12):
 
 ```bash
 python -m pip install -r requirements-dev.txt
 bash -n scripts/*.sh
-git ls-files -z | xargs -0 detect-secrets-hook --baseline .secrets.baseline --
 shellcheck scripts/*.sh
-ASDF_ACTIONLINT_VERSION=1.7.12 actionlint .github/workflows/*.yml
+actionlint
+git ls-files -z | xargs -0 detect-secrets-hook --baseline .secrets.baseline --
 python -m unittest discover -s tests
 ```
 
-`requirements-dev.txt` installs ShellCheck and the release-note secret scanner.
-Install actionlint through your local toolchain before running the full local
-gate. Hosted CI installs actionlint before running it.
+Every command should exit with status `0`; the final command reports the test count and `OK`. [Contributing](CONTRIBUTING.md) covers the development setup and pull request checklist.
 
-## Project Links
-
-- [Action reference](docs/reference/action.md)
-- [Generate VEX from an SBOM](docs/how-to/generate-vex-from-sbom.md)
-- [Compatibility reference](docs/reference/compatibility.md)
-- [Release the action](docs/how-to/release-action.md)
-- [Security policy](SECURITY.md)
-- [Contributing](CONTRIBUTING.md)
-- [License](LICENSE)
+Vexcalibur Action is available under the [Apache License 2.0](LICENSE).
