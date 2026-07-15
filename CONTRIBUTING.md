@@ -100,6 +100,8 @@ The test suites divide responsibility this way:
 
 - `tests/test_run_vexcalibur.py` covers action inputs, path handling, environment isolation, package installation, and argument forwarding.
 - `tests/test_next_release_tag.py` covers automatic and manual release versions.
+- `tests/test_documentation.py` keeps current package examples aligned with the
+  released-package CI lane while preserving release-time compatibility history.
 - `tests/test_fake_osv_server.py` covers the local Open Source Vulnerabilities (OSV) test server.
 - `tests/test_release_security.py` protects the hash locks and release runner, token, scanner, and artifact-digest boundaries.
 - `tests/fuzz/wrapper_properties.py` checks decoded environment inputs against the real wrapper and a literal argument-vector model.

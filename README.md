@@ -7,7 +7,7 @@
 
 Vexcalibur Action runs the [Vexcalibur command-line interface (CLI)](https://github.com/vexcalibur-dev/vexcalibur) in a GitHub Actions workflow. Use it to generate Vulnerability Exploitability eXchange (VEX) from a software bill of materials (SBOM), query a service that implements the Open Source Vulnerabilities (OSV) API, or run another Vexcalibur command without maintaining a separate installation step.
 
-The action is pre-1.0. Each action release is tested with specific Vexcalibur package versions. The current pair is `vexcalibur-action@v0.2.1` with `vexcalibur==0.3.0`.
+The action is pre-1.0. Each action release is tested with specific Vexcalibur package versions. The current pair is `vexcalibur-action@v0.2.1` with `vexcalibur==0.3.1`.
 
 Current continuous integration (CI) exercises the wrapper on `ubuntu-latest`. It verifies CycloneDX 1.6, OpenVEX 0.2.0, and CSAF 2.0 VEX output with local fixtures.
 
@@ -30,7 +30,7 @@ jobs:
       - name: Run Vexcalibur
         uses: vexcalibur-dev/vexcalibur-action@v0.2.1
         with:
-          package-spec: vexcalibur==0.3.0
+          package-spec: vexcalibur==0.3.1
           args: --help
 ```
 
@@ -45,7 +45,7 @@ The action and the Python package are separate trust boundaries. Pin both in rev
 ```yaml
 - uses: vexcalibur-dev/vexcalibur-action@f05361ec7308e0ff2cf8b961b7ccca2c001b910b # v0.2.1
   with:
-    package-spec: vexcalibur==0.3.0
+    package-spec: vexcalibur==0.3.1
     args: --help
 ```
 
@@ -56,7 +56,7 @@ An exact `package-spec` doesn't pin transitive Python dependencies. For repeatab
 ```yaml
 - uses: vexcalibur-dev/vexcalibur-action@v0.2.1
   with:
-    package-spec: vexcalibur==0.3.0
+    package-spec: vexcalibur==0.3.1
     constraints-file: ${{ github.workspace }}/.github/vexcalibur-constraints.txt
     args: --help
 ```

@@ -4,12 +4,15 @@ Vexcalibur Action installs a Vexcalibur Python package at run time. The action r
 
 ## Tested pairs
 
-This table records the combinations verified by this repository:
+This table records combinations verified by this repository. The current pair is
+tested on every continuous integration (CI) run; older rows preserve the coverage
+that existed when those versions were current.
 
 | Action ref | Vexcalibur package | Python versions | Status |
 | --- | --- | --- | --- |
 | `main` | Wheel built from `vexcalibur-dev/vexcalibur@main`; `vexcalibur==0.3.1` in separate release-package jobs | `3.10`, `3.14` | Mutable development branch |
-| `v0.2.1` | `vexcalibur==0.3.0` | `3.10`, `3.14` | Current supported pair; isolates release-note generation, scanning, and publication on separate runners; includes CycloneDX 1.6, OpenVEX 0.2.0, and CSAF 2.0 VEX output |
+| `v0.2.1` | `vexcalibur==0.3.1` | `3.10`, `3.14` | Current supported pair; actively tested with CycloneDX 1.6, OpenVEX 0.2.0, and CSAF 2.0 VEX output |
+| `v0.2.1` | `vexcalibur==0.3.0` | `3.10`, `3.14` | Original release-time pair; previously tested with CycloneDX 1.6, OpenVEX 0.2.0, and CSAF 2.0 VEX output |
 | `v0.2.0` | `vexcalibur==0.3.0` | `3.10`, `3.14` | Previously tested pair; includes CycloneDX 1.6, OpenVEX 0.2.0, and CSAF 2.0 VEX output |
 | `v0.2.0` | `vexcalibur==0.2.0` | `3.10`, `3.14` | Previously tested pair; includes OpenVEX 0.2.0 output |
 | `v0.2.0` | `vexcalibur==0.1.1` | `3.10`, `3.14` | Previously tested pair; CycloneDX output only |
@@ -19,7 +22,18 @@ The Python column names versions that this repository's continuous integration (
 
 The OpenVEX and CSAF artifact lanes use the default Python 3.14. Help and query lanes exercise Python 3.10 and 3.14.
 
-The `v0.2.1` runtime contract is unchanged from `v0.2.0`. Its release workflow generates, scans, and publishes release notes on three separate runners. The scanner installs only a wheel-only, hash-locked dependency closure and receives no publication credential. The publisher verifies the scanned artifact's SHA-256 digest before it creates its short-lived publication credential.
+The `v0.2.1` action was published while `vexcalibur==0.3.0` was current. The
+action installs the caller-selected package at run time, and its runtime contract
+is unchanged from `v0.2.0`, so the same action release can support a newer tested
+package without moving its tag. Current CI verifies `v0.2.1` with
+`vexcalibur==0.3.1` and separately verifies the mutable action against a wheel
+built from Vexcalibur's `main` branch.
+
+The `v0.2.1` release workflow generates, scans, and publishes release notes on
+three separate runners. The scanner installs only a wheel-only, hash-locked
+dependency closure and receives no publication credential. The publisher verifies
+the scanned artifact's SHA-256 digest before it creates its short-lived
+publication credential.
 
 All listed checks run on GitHub-hosted `ubuntu-latest`. Other runner operating systems aren't verified. The action assumes `/bin/bash`, POSIX paths, and a writable, executable `RUNNER_TEMP`; see [Runner requirements](action.md#runner-requirements).
 
@@ -28,7 +42,7 @@ Use a release pair for reviewed workflows:
 ```yaml
 - uses: vexcalibur-dev/vexcalibur-action@v0.2.1
   with:
-    package-spec: vexcalibur==0.3.0
+    package-spec: vexcalibur==0.3.1
     args: --help
 ```
 
@@ -41,7 +55,7 @@ Choose pins that match the workflow's supply-chain policy:
 | Boundary | Readable pin | Immutable or repeatable pin |
 | --- | --- | --- |
 | Action wrapper | `vexcalibur-dev/vexcalibur-action@v0.2.1` | `vexcalibur-dev/vexcalibur-action@f05361ec7308e0ff2cf8b961b7ccca2c001b910b` (`v0.2.1`) |
-| Vexcalibur package | `vexcalibur==0.3.0` | Same exact spec; verify the package index and hashes according to local policy |
+| Vexcalibur package | `vexcalibur==0.3.1` | Same exact spec; verify the package index and hashes according to local policy |
 | Transitive Python packages | Resolver-selected versions | Checked-in, complete pip constraints passed through `constraints-file` |
 
 This action's release policy forbids moving an existing version tag. A commit SHA still gives the strongest GitHub Actions pin because the workflow itself names the immutable object.
