@@ -8,11 +8,14 @@ This table records the combinations verified by this repository:
 
 | Action ref | Vexcalibur package | Python versions | Status |
 | --- | --- | --- | --- |
-| `main` | Wheel built from `vexcalibur-dev/vexcalibur@main`; `vexcalibur==0.1.1` in separate release-package jobs | `3.10`, `3.14` | Mutable development branch |
-| `v0.2.0` | `vexcalibur==0.1.1` | `3.10`, `3.14` | Current supported release; adds `constraints-file` |
+| `main` | Wheel built from `vexcalibur-dev/vexcalibur@main`; `vexcalibur==0.2.0` in separate release-package jobs | `3.10`, `3.14` | Mutable development branch |
+| `v0.2.0` | `vexcalibur==0.2.0` | `3.10`, `3.14` | Current supported pair; includes OpenVEX 0.2.0 output |
+| `v0.2.0` | `vexcalibur==0.1.1` | `3.10`, `3.14` | Previously tested pair; CycloneDX output only |
 | `v0.1.0` | `vexcalibur==0.1.1` | `3.10`, `3.14` | Historical release; no longer receives security fixes |
 
 The Python column names versions that this repository's continuous integration (CI) exercises. It doesn't claim that every version between them is tested here.
+
+The OpenVEX artifact lanes use the default Python 3.14. Help and query lanes exercise Python 3.10 and 3.14.
 
 All listed checks run on GitHub-hosted `ubuntu-latest`. Other runner operating systems aren't verified. The action assumes `/bin/bash`, POSIX paths, and a writable, executable `RUNNER_TEMP`; see [Runner requirements](action.md#runner-requirements).
 
@@ -21,7 +24,7 @@ Use a release pair for reviewed workflows:
 ```yaml
 - uses: vexcalibur-dev/vexcalibur-action@v0.2.0
   with:
-    package-spec: vexcalibur==0.1.1
+    package-spec: vexcalibur==0.2.0
     args: --help
 ```
 
@@ -34,7 +37,7 @@ Choose pins that match the workflow's supply-chain policy:
 | Boundary | Readable pin | Immutable or repeatable pin |
 | --- | --- | --- |
 | Action wrapper | `vexcalibur-dev/vexcalibur-action@v0.2.0` | `vexcalibur-dev/vexcalibur-action@6a028a18b4b7fc15cd5e83056e0013ed0928a483` (`v0.2.0`) |
-| Vexcalibur package | `vexcalibur==0.1.1` | Same exact spec; verify the package index and hashes according to local policy |
+| Vexcalibur package | `vexcalibur==0.2.0` | Same exact spec; verify the package index and hashes according to local policy |
 | Transitive Python packages | Resolver-selected versions | Checked-in, complete pip constraints passed through `constraints-file` |
 
 This action's release policy forbids moving an existing version tag. A commit SHA still gives the strongest GitHub Actions pin because the workflow itself names the immutable object.
@@ -62,11 +65,13 @@ The required `CI result` job aggregates these checks:
 1. **Repository quality:** Bash syntax, ShellCheck, actionlint, YAML and JSON parsing, secret scanning, and unit tests.
 2. **Development wheel:** a wheel built from `vexcalibur-dev/vexcalibur@main`.
 3. **Action boundary:** `--help` and a local fake Open Source Vulnerabilities (OSV) query with that wheel on Python 3.10 and 3.14.
-4. **VEX artifact:** an XML CycloneDX software bill of materials (SBOM) plus local findings on the default Python 3.14. CI compares the result with the package repository's golden CycloneDX 1.6 VEX fixture and uploads `vexcalibur-sbom-to-vex-output`.
-5. **Released package:** `--help` and the local fake OSV query with `vexcalibur==0.1.1` on Python 3.10 and 3.14.
-6. **Dependency and repository checks:** dependency review on pull requests and OpenSSF Scorecard without PR comments or SARIF upload in the required CI workflow.
+4. **CycloneDX artifact:** an XML CycloneDX software bill of materials (SBOM) plus local findings on the default Python 3.14. CI compares the result with the package repository's golden CycloneDX 1.6 fixture.
+5. **Development OpenVEX artifact:** the same local inputs with the development wheel. CI checks the OpenVEX context, author, statuses, products, and status-specific evidence before uploading `openvex-wheel-output`.
+6. **Released package:** `--help` and the local fake OSV query with `vexcalibur==0.2.0` on Python 3.10 and 3.14.
+7. **Released OpenVEX artifact:** `vexcalibur==0.2.0` produces OpenVEX from the controlled local fixtures. CI checks its metadata, statuses, products, and evidence fields. It also confirms that the action inputs, execution steps, and runtime script still match `v0.2.0`, then uploads `openvex-released-package-output`.
+8. **Dependency and repository checks:** dependency review on pull requests and OpenSSF Scorecard without PR comments or SARIF upload in the required CI workflow.
 
-The fake OSV jobs use a loopback server. They don't send package URLs to the public OSV API.
+The fake OSV jobs use a loopback server. The artifact jobs use `--offline` with local findings. None of these jobs sends package URLs to the public OSV API.
 
 CI reads the expected released package from `VEXCALIBUR_RELEASE_PACKAGE_VERSION` in `.github/workflows/ci.yml`. It also checks PyPI's latest `vexcalibur` release. A mismatch fails the release-package lane instead of silently testing an unexpected package.
 

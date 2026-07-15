@@ -1,4 +1,4 @@
-# Generate VEX from an SBOM
+# Generate CycloneDX VEX from an SBOM
 
 Use this guide to turn a checked-out CycloneDX software bill of materials (SBOM) and a local findings file into a CycloneDX 1.6 Vulnerability Exploitability eXchange (VEX) artifact. The vulnerability lookup stays local: Vexcalibur doesn't contact the Open Source Vulnerabilities (OSV) service in this workflow.
 
@@ -49,7 +49,7 @@ jobs:
       - name: Generate VEX
         uses: vexcalibur-dev/vexcalibur-action@6a028a18b4b7fc15cd5e83056e0013ed0928a483 # v0.2.0
         with:
-          package-spec: vexcalibur==0.1.1
+          package-spec: vexcalibur==0.2.0
           args: |
             generate
             ${{ github.workspace }}/security/sbom.cdx.json

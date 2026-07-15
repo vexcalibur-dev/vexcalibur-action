@@ -43,7 +43,9 @@ The test suites divide responsibility this way:
 - `tests/test_next_release_tag.py` covers automatic and manual release versions.
 - `tests/test_fake_osv_server.py` covers the local Open Source Vulnerabilities (OSV) test server.
 
-Hosted continuous integration (CI) also builds a wheel from `vexcalibur-dev/vexcalibur@main`. It exercises the action on Python 3.10 and 3.14 with `--help` and the local fake OSV server. A separate job compares generated Vulnerability Exploitability eXchange (VEX) output with the package repository's golden fixture. None of these checks needs public OSV access.
+Hosted continuous integration (CI) also builds a wheel from `vexcalibur-dev/vexcalibur@main`. It exercises the action on Python 3.10 and 3.14 with `--help` and the local fake OSV server.
+
+Artifact jobs compare CycloneDX and OpenVEX output with package-owned golden fixtures. OpenVEX runs against both the development wheel and the pinned PyPI release. None of these checks sends inventory to public OSV.
 
 ## Make a focused change
 

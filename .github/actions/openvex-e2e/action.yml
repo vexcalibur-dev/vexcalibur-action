@@ -1,0 +1,118 @@
+name: OpenVEX E2E
+description: Generate and validate OpenVEX with local fixtures.
+
+inputs:
+  package-spec:
+    description: Package spec passed through to the Vexcalibur Action.
+    required: true
+  allow-development-package-spec:
+    description: Whether the Vexcalibur Action should allow a development package spec.
+    required: false
+    default: "false"
+  expected-path:
+    description: Optional absolute path to an OpenVEX golden document.
+    required: false
+    default: ""
+  artifact-name:
+    description: Name for the uploaded OpenVEX artifact.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Prepare output directory
+      shell: bash
+      run: mkdir -p "$RUNNER_TEMP/vexcalibur-openvex"
+
+    - name: Generate OpenVEX from local findings
+      uses: ./
+      with:
+        package-spec: ${{ inputs.package-spec }}
+        allow-development-package-spec: ${{ inputs.allow-development-package-spec }}
+        args: |
+          generate
+          ${{ github.workspace }}/tests/fixtures/sbom/cyclonedx-xml-1.5-simple.xml
+          --offline
+          --findings-file
+          ${{ github.workspace }}/tests/fixtures/findings/all-analysis-states.json
+          --format
+          openvex
+          --author
+          Vexcalibur Test Maintainers
+          --author-role
+          Document producer
+          --timestamp
+          2026-06-23T00:00:00Z
+          --output
+          ${{ runner.temp }}/vexcalibur-openvex/openvex.json
+
+    - name: Validate OpenVEX
+      shell: bash
+      env:
+        EXPECTED_OPENVEX_PATH: ${{ inputs.expected-path }}
+      run: |
+        python - <<'PY'
+        from collections import Counter
+        from pathlib import Path
+        import difflib
+        import json
+        import os
+
+        artifact = Path(os.environ["RUNNER_TEMP"]) / "vexcalibur-openvex" / "openvex.json"
+        document = json.loads(artifact.read_text(encoding="utf-8"))
+
+        expected_path_value = os.environ["EXPECTED_OPENVEX_PATH"].strip()
+        if expected_path_value:
+            expected_path = Path(expected_path_value)
+            expected = json.loads(expected_path.read_text(encoding="utf-8"))
+            if document != expected:
+                actual_text = json.dumps(document, indent=2, sort_keys=True).splitlines()
+                expected_text = json.dumps(expected, indent=2, sort_keys=True).splitlines()
+                diff = "\n".join(
+                    difflib.unified_diff(
+                        expected_text,
+                        actual_text,
+                        fromfile=str(expected_path),
+                        tofile=str(artifact),
+                        lineterm="",
+                    )
+                )
+                raise SystemExit(f"Generated OpenVEX did not match the golden fixture:\n{diff}")
+
+        assert document["@context"] == "https://openvex.dev/ns/v0.2.0", document
+        assert document["author"] == "Vexcalibur Test Maintainers", document
+        assert document["role"] == "Document producer", document
+
+        statements = document.get("statements")
+        assert isinstance(statements, list) and statements, document
+        assert Counter(statement["status"] for statement in statements) == {
+            "affected": 1,
+            "fixed": 1,
+            "not_affected": 2,
+            "under_investigation": 1,
+        }, statements
+
+        for statement in statements:
+            products = statement.get("products")
+            assert isinstance(products, list) and products, statement
+            for product in products:
+                assert product["@id"] == product["identifiers"]["purl"], product
+
+            status = statement["status"]
+            if status == "affected":
+                assert statement.get("action_statement", "").strip(), statement
+            elif status == "not_affected":
+                assert statement.get("impact_statement", "").strip(), statement
+            elif status == "fixed":
+                assert "Confirmed fixed product version:" in statement["status_notes"], statement
+
+        print(f"validated {artifact}")
+        PY
+
+    - name: Upload OpenVEX
+      if: always()
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      with:
+        name: ${{ inputs.artifact-name }}
+        path: ${{ runner.temp }}/vexcalibur-openvex/openvex.json
+        if-no-files-found: warn
