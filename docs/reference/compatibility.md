@@ -9,7 +9,7 @@ This table records the combinations verified by this repository:
 | Action ref | Vexcalibur package | Python versions | Status |
 | --- | --- | --- | --- |
 | `main` | Wheel built from `vexcalibur-dev/vexcalibur@main`; `vexcalibur==0.3.0` in separate release-package jobs | `3.10`, `3.14` | Mutable development branch |
-| `v0.2.1` | `vexcalibur==0.3.0` | `3.10`, `3.14` | Current supported pair; includes release-scanner isolation plus CycloneDX 1.6, OpenVEX 0.2.0, and CSAF 2.0 VEX output |
+| `v0.2.1` | `vexcalibur==0.3.0` | `3.10`, `3.14` | Current supported pair; isolates release-note generation, scanning, and publication on separate runners; includes CycloneDX 1.6, OpenVEX 0.2.0, and CSAF 2.0 VEX output |
 | `v0.2.0` | `vexcalibur==0.3.0` | `3.10`, `3.14` | Previously tested pair; includes CycloneDX 1.6, OpenVEX 0.2.0, and CSAF 2.0 VEX output |
 | `v0.2.0` | `vexcalibur==0.2.0` | `3.10`, `3.14` | Previously tested pair; includes OpenVEX 0.2.0 output |
 | `v0.2.0` | `vexcalibur==0.1.1` | `3.10`, `3.14` | Previously tested pair; CycloneDX output only |
@@ -19,12 +19,14 @@ The Python column names versions that this repository's continuous integration (
 
 The OpenVEX and CSAF artifact lanes use the default Python 3.14. Help and query lanes exercise Python 3.10 and 3.14.
 
+The `v0.2.1` runtime contract is unchanged from `v0.2.0`. Its release workflow generates, scans, and publishes release notes on three separate runners. The scanner installs only a wheel-only, hash-locked dependency closure and receives no publication credential. The publisher verifies the scanned artifact's SHA-256 digest before it creates its short-lived publication credential.
+
 All listed checks run on GitHub-hosted `ubuntu-latest`. Other runner operating systems aren't verified. The action assumes `/bin/bash`, POSIX paths, and a writable, executable `RUNNER_TEMP`; see [Runner requirements](action.md#runner-requirements).
 
 Use a release pair for reviewed workflows:
 
 ```yaml
-- uses: vexcalibur-dev/vexcalibur-action@v0.2.0
+- uses: vexcalibur-dev/vexcalibur-action@v0.2.1
   with:
     package-spec: vexcalibur==0.3.0
     args: --help
@@ -38,7 +40,7 @@ Choose pins that match the workflow's supply-chain policy:
 
 | Boundary | Readable pin | Immutable or repeatable pin |
 | --- | --- | --- |
-| Action wrapper | `vexcalibur-dev/vexcalibur-action@v0.2.0` | `vexcalibur-dev/vexcalibur-action@6a028a18b4b7fc15cd5e83056e0013ed0928a483` (`v0.2.0`) |
+| Action wrapper | `vexcalibur-dev/vexcalibur-action@v0.2.1` | `vexcalibur-dev/vexcalibur-action@f05361ec7308e0ff2cf8b961b7ccca2c001b910b` (`v0.2.1`) |
 | Vexcalibur package | `vexcalibur==0.3.0` | Same exact spec; verify the package index and hashes according to local policy |
 | Transitive Python packages | Resolver-selected versions | Checked-in, complete pip constraints passed through `constraints-file` |
 
@@ -71,7 +73,7 @@ The required `CI result` job aggregates these checks:
 5. **Development OpenVEX artifact:** the same local inputs with the development wheel. CI checks the OpenVEX context, author, statuses, products, and status-specific evidence before uploading `openvex-wheel-output`.
 6. **Development CSAF artifact:** the development wheel produces CSAF 2.0 from the same controlled inputs. CI compares the document with the package repository's golden fixture except for the independently checked development-version field. It checks publisher and tracking metadata, all product statuses, versioned product identities, remediations, and impact threats before uploading `csaf-wheel-output`.
 7. **Released package:** `--help` and the local fake OSV query with `vexcalibur==0.3.0` on Python 3.10 and 3.14.
-8. **Released OpenVEX artifact:** `vexcalibur==0.3.0` produces OpenVEX from the controlled local fixtures. CI checks its metadata, statuses, products, and evidence fields. It also confirms that the action inputs, execution steps, and runtime script still match `v0.2.0`, then uploads `openvex-released-package-output`.
+8. **Released OpenVEX artifact:** `vexcalibur==0.3.0` produces OpenVEX from the controlled local fixtures. CI checks its metadata, statuses, products, and evidence fields. It also confirms that the action inputs, execution steps, and runtime script still match `v0.2.1`, then uploads `openvex-released-package-output`.
 9. **Released CSAF artifact:** `vexcalibur==0.3.0` produces CSAF from the controlled local fixtures. CI checks the generator version against the installed release plus the publisher, tracking, product, status, remediation, and impact contracts before uploading `csaf-released-package-output`.
 10. **Dependency and repository checks:** dependency review on pull requests and OpenSSF Scorecard without PR comments or SARIF upload in the required CI workflow.
 
