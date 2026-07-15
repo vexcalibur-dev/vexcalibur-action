@@ -18,10 +18,54 @@ git clone https://github.com/vexcalibur-dev/vexcalibur-action.git
 cd vexcalibur-action
 python -m venv /tmp/vexcalibur-action-venv
 source /tmp/vexcalibur-action-venv/bin/activate
-python -m pip install -r requirements-dev.txt
+python -m pip install \
+  --only-binary=:all: \
+  --require-hashes \
+  -r requirements-dev.txt
 ```
 
-The development requirements install ShellCheck, PyYAML, and the secret scanner. A successful install ends without a pip error.
+The development lock installs ShellCheck, PyYAML, the secret scanner, and their complete transitive dependency closure. `--only-binary` rejects source distributions, and `--require-hashes` rejects any distribution that isn't approved in the lock. A successful install ends without a pip error.
+
+## Refresh dependency locks
+
+`requirements-release.in` and `requirements-dev.in` are the maintainer-edited direct dependencies. Their corresponding `.txt` files are generated security boundaries. The smaller release lock is installed only on the release-note scanner runner; the development lock adds repository validation tools.
+
+You need [uv 0.11.28](https://github.com/astral-sh/uv/releases/tag/0.11.28) and network access to the Python Package Index. The refresh script refuses a different uv version. From the repository root, confirm the version and regenerate both locks:
+
+```bash
+uv --version
+scripts/refresh-requirements.sh
+```
+
+The first command must report `uv 0.11.28`. Review the complete diff before accepting it:
+
+- Every direct dependency change in an `.in` file is intentional.
+- Every package in each `.txt` file has an exact version and at least one SHA-256 hash.
+- Both generated files retain `--only-binary :all:`.
+- `requirements-release.txt` contains only the release scanner and its transitive dependencies.
+- `requirements-dev.txt` contains the same release closure plus the declared development tools.
+- No editable, local-path, direct-URL, extra-index, or unhashed requirement appears.
+
+Validate both locks in clean environments rather than reusing the environment that ran the compiler:
+
+```bash
+python -m venv /tmp/vexcalibur-action-release-lock
+/tmp/vexcalibur-action-release-lock/bin/python -m pip install \
+  --only-binary=:all: \
+  --require-hashes \
+  -r requirements-release.txt
+/tmp/vexcalibur-action-release-lock/bin/detect-secrets --version
+
+python -m venv /tmp/vexcalibur-action-dev-lock
+/tmp/vexcalibur-action-dev-lock/bin/python -m pip install \
+  --only-binary=:all: \
+  --require-hashes \
+  -r requirements-dev.txt
+/tmp/vexcalibur-action-dev-lock/bin/shellcheck --version
+/tmp/vexcalibur-action-dev-lock/bin/python -c 'import yaml'
+```
+
+Each install must finish without a hash, source-distribution, or resolver error. Remove the two `/tmp/vexcalibur-action-*-lock` environments after review.
 
 ## Run the local checks
 
@@ -31,7 +75,8 @@ Run the same checks from the repository root:
 bash -n scripts/*.sh
 shellcheck scripts/*.sh
 actionlint
-git ls-files -z | xargs -0 detect-secrets-hook --baseline .secrets.baseline --
+git ls-files --cached --others --exclude-standard -z \
+  | xargs -0 detect-secrets-hook --baseline .secrets.baseline --
 python -m unittest discover -s tests
 ```
 
@@ -42,6 +87,7 @@ The test suites divide responsibility this way:
 - `tests/test_run_vexcalibur.py` covers action inputs, path handling, environment isolation, package installation, and argument forwarding.
 - `tests/test_next_release_tag.py` covers automatic and manual release versions.
 - `tests/test_fake_osv_server.py` covers the local Open Source Vulnerabilities (OSV) test server.
+- `tests/test_release_security.py` protects the hash locks and release runner, token, scanner, and artifact-digest boundaries.
 
 Hosted continuous integration (CI) also builds a wheel from `vexcalibur-dev/vexcalibur@main`. It exercises the action on Python 3.10 and 3.14 with `--help` and the local fake OSV server.
 

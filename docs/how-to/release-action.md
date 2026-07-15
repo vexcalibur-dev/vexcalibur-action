@@ -14,6 +14,7 @@ Confirm all of these conditions:
 - The full local check suite in [Contributing](../../CONTRIBUTING.md) passes.
 - `.github/workflows/ci.yml` sets `VEXCALIBUR_RELEASE_PACKAGE_VERSION` to the exact package release this action version supports.
 - The prospective action tag and `vexcalibur==...` spec appear together in [the compatibility table](../reference/compatibility.md).
+- The release and development dependency locks pass the checks in [Contributing](../../CONTRIBUTING.md#refresh-dependency-locks).
 - The `vexcalibur-dev` automation GitHub App is installed on this repository.
 - The organization variable `AUTOMATION_CLIENT_ID` and secret `AUTOMATION_SECRET` are available to the repository.
 - The app can write repository contents for this repository. The release workflow uses that permission to create tags and GitHub Releases.
@@ -36,16 +37,19 @@ flowchart LR
     Push[Push to main] --> Resolve[Resolve version]
     Resolve -->|No release type| Stop[Stop]
     Resolve -->|Release required| CI[Wait for CI on the same commit]
-    CI --> Token[Create repository-scoped app token]
-    Token --> Notes[Generate release notes]
-    Notes --> Scan[Scan notes for secrets]
-    Scan --> Tag[Create annotated tag]
+    CI --> Notes[Generate notes on a clean runner]
+    Notes --> Generated[Upload notes and record SHA-256]
+    Generated --> Scan[Verify and scan on a clean runner]
+    Scan --> Scanned[Upload scanned notes and record SHA-256]
+    Scanned --> Verify[Verify on a clean publisher]
+    Verify --> Token[Create publication token]
+    Token --> Tag[Create annotated tag]
     Tag --> Release[Publish GitHub Release]
 ```
 
-In text: a push to `main` either stops after version classification or waits for CI on that exact commit. The workflow then creates a repository-scoped app token, generates and scans release notes, creates an annotated tag, and publishes the release.
+In text: a push to `main` either stops after version classification or waits for CI on that exact commit. One clean runner generates release notes and uploads them with a separately recorded SHA-256 digest. A second runner verifies that digest, installs the wheel-only, hash-locked scanner closure, scans the notes, and uploads a new artifact with its digest. A third clean runner downloads the scanned artifact and verifies its digest before it creates an annotated tag and publishes the release.
 
-The default workflow token has read-only `actions` and `contents` permissions. Write access exists only after the required CI run succeeds and the app token is created. The secret scan runs in a separate step that doesn't receive the app token.
+The default workflow token has read-only `actions` and `contents` permissions. GitHub's generated-release-notes endpoint requires contents-write permission, so the generator creates a short-lived, repository-scoped app token after CI passes. That token and runner end before the scanner starts. The scanner receives no app token, referenced repository secret, restored dependency cache, or publication credential. Its filesystem, package cache, and `PATH` state are discarded before the publisher starts. The final publisher installs no packages, executes no scanner, and creates a new publication token only after the scanned artifact passes digest verification. Generated and scanned artifacts expire after one day.
 
 ## Version rules
 
@@ -81,7 +85,8 @@ The workflow starts on every push to `main`.
 2. Open the `CI` workflow for the merge commit and wait for **CI result** to pass.
 3. Open the `Release` workflow for the same commit.
 4. Confirm that **Resolve release candidate** reports the expected tag.
-5. Wait for **Publish GitHub Release** to finish.
+5. Confirm **Generate release notes** and **Scan release notes** pass on their separate runners.
+6. Wait for **Publish GitHub Release** to finish.
 
 The release workflow stops if a newer commit reaches `main` while it is running. It also stops after about 15 minutes if CI for the release commit never completes.
 
@@ -135,6 +140,8 @@ Stop if the tag points to another commit. Don't move it. Investigate the unexpec
 | `CI did not pass` | CI for the exact release commit completed unsuccessfully. | Fix the failure in a new pull request. Don't release the failing commit. |
 | `Timed out waiting for CI` | No successful CI result arrived during the wait window. | Inspect the CI run. After it passes, rerun Release for the current `main` commit. |
 | Compatibility-table verification fails | The computed tag and expected package spec don't appear in one table row. | Add the row in a pull request, merge it, and release the new commit. |
+| Locked scanner installation fails | A required wheel or hash doesn't match `requirements-release.txt`. | Don't bypass hash checking. Review and refresh the locks through the documented procedure in a pull request. |
+| Generated or scanned release-note digest fails | The artifact differs from the bytes produced or approved by the preceding runner. | Stop the release. Inspect the workflow run and artifacts; rerun only after the unexpected change is understood. |
 | Release-note secret scan fails | Generated notes contain a secret-like value. | Inspect the notes privately. Rotate any real secret, fix the source text, and rerun only after the notes are safe. |
 | Tag exists on a different commit | The requested version has already been used. | Don't move the tag. Investigate, then choose a higher version. |
 | Tag exists on the current commit but the release is missing | A prior run stopped after tag creation. | Dispatch the same version to reuse the tag and create the release. |

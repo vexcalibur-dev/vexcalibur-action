@@ -1,0 +1,5 @@
+-r requirements-release.in
+
+# Direct dependencies used by repository validation.
+PyYAML==6.0.3
+shellcheck-py==0.11.0.1
