@@ -1,0 +1,75 @@
+name: Wrapper fuzzing
+
+on:
+  schedule:
+    - cron: "17 8 * * 3"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  wrapper-fuzz:
+    name: Bounded wrapper fuzzing
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      FUZZ_MAX_LEN: "65536"
+      FUZZ_MAX_TOTAL_TIME: "120"
+      FUZZ_RSS_LIMIT_MB: "2048"
+      FUZZ_UNIT_TIMEOUT: "5"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.14"
+
+      - name: Verify fuzzing runtime
+        run: |
+          python - <<'PY'
+          import platform
+          import sys
+
+          if sys.implementation.name != "cpython" or sys.version_info[:2] != (3, 14):
+              raise SystemExit(f"expected CPython 3.14; found {sys.version}")
+          if platform.system() != "Linux" or platform.machine() != "x86_64":
+              raise SystemExit(
+                  f"expected Linux x86_64; found {platform.system()} {platform.machine()}"
+              )
+          PY
+
+      - name: Install fuzzing dependencies
+        run: >-
+          python -m pip install
+          --only-binary=:all:
+          --require-hashes
+          -r requirements-fuzz.txt
+
+      - name: Audit fuzzing dependencies
+        run: >-
+          python -m pip_audit
+          --requirement requirements-fuzz.txt
+          --no-deps
+          --disable-pip
+          --cache-dir "$RUNNER_TEMP/vexcalibur-action-pip-audit-cache"
+
+      - name: Run bounded campaign
+        id: campaign
+        env:
+          FUZZ_ARTIFACT_DIR: ${{ runner.temp }}/vexcalibur-action-fuzz-artifacts
+          FUZZ_CORPUS_DIR: ${{ runner.temp }}/vexcalibur-action-fuzz-corpus
+        run: scripts/run-atheris.sh
+
+      - name: Upload synthetic crash reproducers
+        if: failure() && steps.campaign.outcome == 'failure'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: vexcalibur-action-wrapper-crash-${{ github.run_id }}
+          path: ${{ runner.temp }}/vexcalibur-action-fuzz-artifacts/
+          if-no-files-found: warn
+          retention-days: 7

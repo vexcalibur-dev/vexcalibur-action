@@ -10,6 +10,7 @@ import yaml
 ROOT = Path(__file__).resolve().parents[1]
 RELEASE_WORKFLOW_PATH = ROOT / ".github" / "workflows" / "release.yml"
 CI_WORKFLOW_PATH = ROOT / ".github" / "workflows" / "ci.yml"
+FUZZ_WORKFLOW_PATH = ROOT / ".github" / "workflows" / "fuzz.yml"
 HASH_PATTERN = re.compile(r"--hash=sha256:([0-9a-f]{64})$")
 PIN_PATTERN = re.compile(r"^([A-Za-z0-9][A-Za-z0-9._-]*)==([^\s\\]+)")
 
@@ -84,19 +85,82 @@ class DependencyLockTests(unittest.TestCase):
         release_packages = locked_packages(ROOT / "requirements-release.txt")
         development_packages = locked_packages(ROOT / "requirements-dev.txt")
 
-        self.assertEqual(set(development_packages), set(release_packages) | {"shellcheck-py"})
+        self.assertEqual(
+            set(development_packages),
+            set(release_packages) | {"hypothesis", "shellcheck-py", "sortedcontainers"},
+        )
         for name, release_entry in release_packages.items():
             with self.subTest(package=name):
                 self.assertEqual(development_packages[name], release_entry)
 
+    def test_fuzz_lock_extends_the_development_lock(self) -> None:
+        path = ROOT / "requirements-fuzz.txt"
+        self.assert_lock_has_no_alternate_sources(path)
+        development_packages = locked_packages(ROOT / "requirements-dev.txt")
+        fuzz_packages = locked_packages(path)
+
+        self.assertEqual(
+            set(fuzz_packages) - set(development_packages),
+            {
+                "atheris",
+                "boolean-py",
+                "cachecontrol",
+                "cyclonedx-python-lib",
+                "defusedxml",
+                "filelock",
+                "license-expression",
+                "markdown-it-py",
+                "mdurl",
+                "msgpack",
+                "packageurl-python",
+                "packaging",
+                "pip",
+                "pip-api",
+                "pip-audit",
+                "pip-requirements-parser",
+                "platformdirs",
+                "py-serializable",
+                "pygments",
+                "pyparsing",
+                "rich",
+                "tomli",
+                "tomli-w",
+            },
+        )
+        self.assertIn("--only-binary :all:", path.read_text(encoding="utf-8"))
+        for name, development_entry in development_packages.items():
+            with self.subTest(package=name):
+                self.assertEqual(fuzz_packages[name], development_entry)
+        for name, (version, hashes) in fuzz_packages.items():
+            with self.subTest(package=name):
+                self.assertRegex(version, r"^[A-Za-z0-9][A-Za-z0-9.!+_-]*$")
+                self.assertTrue(hashes, f"{name} has no allowed distribution hash")
+
     def test_input_requirements_use_exact_direct_pins(self) -> None:
-        for filename in ("requirements-release.in", "requirements-dev.in"):
+        for filename in (
+            "requirements-release.in",
+            "requirements-dev.in",
+            "requirements-fuzz.in",
+        ):
             with self.subTest(filename=filename):
                 for raw_line in (ROOT / filename).read_text(encoding="utf-8").splitlines():
                     line = raw_line.strip()
                     if not line or line.startswith("#") or line.startswith("-r "):
                         continue
                     self.assertIsNotNone(PIN_PATTERN.fullmatch(line))
+
+    def test_dependabot_covers_all_root_python_locks(self) -> None:
+        config = yaml.safe_load(
+            (ROOT / ".github" / "dependabot.yml").read_text(encoding="utf-8")
+        )
+        python_updates = [
+            update
+            for update in config["updates"]
+            if update["package-ecosystem"] == "pip"
+        ]
+
+        self.assertEqual(len(python_updates), 1)
+        self.assertEqual(python_updates[0]["directory"], "/")
 
 
 class ReleaseWorkflowBoundaryTests(unittest.TestCase):
@@ -222,18 +286,22 @@ class ReleaseWorkflowBoundaryTests(unittest.TestCase):
         )
 
     def test_requirement_installs_are_hash_checked_and_wheel_only(self) -> None:
-        workflows = (load_workflow(CI_WORKFLOW_PATH), self.workflow)
+        workflows = (
+            load_workflow(CI_WORKFLOW_PATH),
+            load_workflow(FUZZ_WORKFLOW_PATH),
+            self.workflow,
+        )
         checked = 0
         for workflow in workflows:
             for job in workflow["jobs"].values():
                 for step in job["steps"]:
                     run = step.get("run", "")
-                    if "requirements-" not in run or ".txt" not in run:
+                    if "pip install" not in run or "requirements-" not in run or ".txt" not in run:
                         continue
                     checked += 1
                     self.assertIn("--only-binary=:all:", run)
                     self.assertIn("--require-hashes", run)
-        self.assertEqual(checked, 2)
+        self.assertEqual(checked, 4)
         self.assertIn(
             "-r requirements-release.txt",
             step_named(self.jobs["scan-release-notes"], "Install release note scanner")["run"],
@@ -243,6 +311,15 @@ class ReleaseWorkflowBoundaryTests(unittest.TestCase):
         self.assertIn(
             "-r requirements-dev.txt",
             step_named(ci_jobs["quality"], "Install development dependencies")["run"],
+        )
+        self.assertIn(
+            "-r requirements-dev.txt",
+            step_named(ci_jobs["wrapper-fuzz-smoke"], "Install development dependencies")["run"],
+        )
+        fuzz_jobs = load_workflow(FUZZ_WORKFLOW_PATH)["jobs"]
+        self.assertIn(
+            "-r requirements-fuzz.txt",
+            step_named(fuzz_jobs["wrapper-fuzz"], "Install fuzzing dependencies")["run"],
         )
 
     def test_release_actions_are_pinned_to_full_commits(self) -> None:

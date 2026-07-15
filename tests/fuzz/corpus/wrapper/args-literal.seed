@@ -1,0 +1,12 @@
+VAF1
+01
+vexcalibur==1.2.3
+<<<ARGS>>>
+generate
+ value with spaces 
+"literal quotes"
+$(not-a-command)
+`not-a-command`
+*.json
+> synthetic-output
+snowman-☃

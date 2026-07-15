@@ -1,0 +1,2 @@
+# Fuzz corpus seeds are byte-oriented test data and may contain intentional whitespace.
+*.seed binary

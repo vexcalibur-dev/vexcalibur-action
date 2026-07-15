@@ -24,13 +24,13 @@ python -m pip install \
   -r requirements-dev.txt
 ```
 
-The development lock installs ShellCheck, PyYAML, the secret scanner, and their complete transitive dependency closure. `--only-binary` rejects source distributions, and `--require-hashes` rejects any distribution that isn't approved in the lock. A successful install ends without a pip error.
+The development lock installs Hypothesis, ShellCheck, PyYAML, the secret scanner, and their complete transitive dependency closure. `--only-binary` rejects source distributions, and `--require-hashes` rejects any distribution that isn't approved in the lock. A successful install ends without a pip error.
 
 ## Refresh dependency locks
 
-`requirements-release.in` and `requirements-dev.in` are the maintainer-edited direct dependencies. Their corresponding `.txt` files are generated security boundaries. The smaller release lock is installed only on the release-note scanner runner; the development lock adds repository validation tools.
+`requirements-release.in`, `requirements-dev.in`, and `requirements-fuzz.in` are the maintainer-edited direct dependencies. Their corresponding `.txt` files are generated security boundaries. The smaller release lock is installed only on the release-note scanner runner; the development lock adds repository validation tools; and the fuzz lock adds Atheris and the dependency auditor for CPython 3.14 on Linux x86-64.
 
-You need [uv 0.11.28](https://github.com/astral-sh/uv/releases/tag/0.11.28) and network access to the Python Package Index. The refresh script refuses a different uv version. From the repository root, confirm the version and regenerate both locks:
+You need [uv 0.11.28](https://github.com/astral-sh/uv/releases/tag/0.11.28) and network access to the Python Package Index. The refresh script refuses a different uv version. From the repository root, confirm the version and regenerate all three locks:
 
 ```bash
 uv --version
@@ -41,12 +41,13 @@ The first command must report `uv 0.11.28`. Review the complete diff before acce
 
 - Every direct dependency change in an `.in` file is intentional.
 - Every package in each `.txt` file has an exact version and at least one SHA-256 hash.
-- Both generated files retain `--only-binary :all:`.
+- All three generated files retain `--only-binary :all:`.
 - `requirements-release.txt` contains only the release scanner and its transitive dependencies.
 - `requirements-dev.txt` contains the same release closure plus the declared development tools.
+- `requirements-fuzz.txt` contains the same development closure plus Atheris, the dependency auditor, and their transitive dependencies.
 - No editable, local-path, direct-URL, extra-index, or unhashed requirement appears.
 
-Validate both locks in clean environments rather than reusing the environment that ran the compiler:
+Validate all three locks in clean environments rather than reusing the environment that ran the compiler:
 
 ```bash
 python -m venv /tmp/vexcalibur-action-release-lock
@@ -63,9 +64,21 @@ python -m venv /tmp/vexcalibur-action-dev-lock
   -r requirements-dev.txt
 /tmp/vexcalibur-action-dev-lock/bin/shellcheck --version
 /tmp/vexcalibur-action-dev-lock/bin/python -c 'import yaml'
+
+python -m venv /tmp/vexcalibur-action-fuzz-lock
+/tmp/vexcalibur-action-fuzz-lock/bin/python -m pip install \
+  --only-binary=:all: \
+  --require-hashes \
+  -r requirements-fuzz.txt
+/tmp/vexcalibur-action-fuzz-lock/bin/python -c 'import atheris'
+/tmp/vexcalibur-action-fuzz-lock/bin/python -m pip_audit \
+  --requirement requirements-fuzz.txt \
+  --no-deps \
+  --disable-pip \
+  --cache-dir /tmp/vexcalibur-action-pip-audit-cache
 ```
 
-Each install must finish without a hash, source-distribution, or resolver error. Remove the two `/tmp/vexcalibur-action-*-lock` environments after review.
+Each install must finish without a hash, source-distribution, or resolver error. Remove the three `/tmp/vexcalibur-action-*-lock` environments after review.
 
 ## Run the local checks
 
@@ -78,9 +91,10 @@ actionlint
 git ls-files --cached --others --exclude-standard -z \
   | xargs -0 detect-secrets-hook --baseline .secrets.baseline --
 python -m unittest discover -s tests
+python -m unittest tests.fuzz.wrapper_properties
 ```
 
-Every command should exit with status `0`. The test command ends with `OK`.
+Every command should exit with status `0`. Both test commands end with `OK`.
 
 The test suites divide responsibility this way:
 
@@ -88,10 +102,13 @@ The test suites divide responsibility this way:
 - `tests/test_next_release_tag.py` covers automatic and manual release versions.
 - `tests/test_fake_osv_server.py` covers the local Open Source Vulnerabilities (OSV) test server.
 - `tests/test_release_security.py` protects the hash locks and release runner, token, scanner, and artifact-digest boundaries.
+- `tests/fuzz/wrapper_properties.py` checks decoded environment inputs against the real wrapper and a literal argument-vector model.
 
 Hosted continuous integration (CI) also builds a wheel from `vexcalibur-dev/vexcalibur@main`. It exercises the action on Python 3.10 and 3.14 with `--help` and the local fake OSV server.
 
 Development artifact jobs compare CycloneDX, OpenVEX, and CSAF output with package-owned golden fixtures. Separate OpenVEX and CSAF jobs exercise the pinned PyPI release. None of these checks sends inventory to public OSV.
+
+The required wrapper fuzz smoke uses deterministic Hypothesis examples. The weekly Atheris job is bounded and offline after dependency setup. See [Fuzz the Action wrapper](docs/how-to/fuzz-action-wrapper.md) for limits, corpus rules, local reproduction, and private triage.
 
 ## Make a focused change
 
@@ -104,6 +121,7 @@ When you change behavior:
 - Update `docs/reference/action.md` when an input, default, path rule, output, or error changes.
 - Update `docs/reference/compatibility.md` and `docs/how-to/release-action.md` when package support or release policy changes.
 - Explain any new network access, GitHub permission, credential, or package-installation risk in the pull request.
+- Preserve a minimized wrapper crash as an ordinary regression test before adding it to the fuzz corpus.
 
 Use fake package data and reserved domains such as `example.com` in tests and docs. Report a vulnerability through the [private security process](SECURITY.md), not in a pull request or public issue.
 

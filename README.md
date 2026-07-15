@@ -88,6 +88,7 @@ See the [action reference](docs/reference/action.md) for every input, path and a
 | Choose an action and package version | [Compatibility reference](docs/reference/compatibility.md) |
 | Publish or recover an action release | [Release the action](docs/how-to/release-action.md) |
 | Change the wrapper or its tests | [Contributing](CONTRIBUTING.md) |
+| Run or triage wrapper fuzzing | [Fuzz the Action wrapper](docs/how-to/fuzz-action-wrapper.md) |
 | Report a non-security bug or request a feature | [Vexcalibur Action issues](https://github.com/vexcalibur-dev/vexcalibur-action/issues) |
 | Report a vulnerability | [Security policy](SECURITY.md) |
 | Understand participation expectations | [Code of conduct](https://github.com/vexcalibur-dev/.github/blob/main/CODE_OF_CONDUCT.md) |
@@ -109,6 +110,7 @@ actionlint
 git ls-files --cached --others --exclude-standard -z \
   | xargs -0 detect-secrets-hook --baseline .secrets.baseline --
 python -m unittest discover -s tests
+python -m unittest tests.fuzz.wrapper_properties
 ```
 
 Every command should exit with status `0`; the final command reports the test count and `OK`. [Contributing](CONTRIBUTING.md) covers the development setup and pull request checklist.

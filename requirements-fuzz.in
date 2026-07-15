@@ -1,0 +1,5 @@
+-r requirements-dev.in
+
+# Coverage-guided runner and dependency auditor for the scheduled fuzz job.
+Atheris==3.1.0
+pip-audit==2.10.1
