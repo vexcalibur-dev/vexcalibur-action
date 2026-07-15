@@ -16,7 +16,7 @@ The action defines these inputs:
 
 | Input | Required | Default | Value |
 | --- | --- | --- | --- |
-| `package-spec` | Yes | None | The single package requirement passed to `pip install`. Release workflows use an exact spec such as `vexcalibur==0.3.0`. |
+| `package-spec` | Yes | None | The single package requirement passed to `pip install`. Release workflows use an exact spec such as `vexcalibur==0.3.1`. |
 | `allow-development-package-spec` | No | `false` | The exact string `true` permits Git URLs, local wheels, paths, and other non-release package specs. Any other value leaves release-only validation in place. |
 | `constraints-file` | No | Empty | Absolute path to a readable [pip constraints file](https://pip.pypa.io/en/stable/user_guide/#constraints-files). |
 | `python-version` | No | `3.14` | Version request passed to `actions/setup-python`. This repository verifies Python 3.10 and 3.14. |
@@ -28,7 +28,7 @@ Without the development opt-in, `package-spec` must start with `vexcalibur==` an
 
 ```yaml
 with:
-  package-spec: vexcalibur==0.3.0
+  package-spec: vexcalibur==0.3.1
 ```
 
 The [compatibility reference](compatibility.md) lists package versions tested with each action release.
@@ -50,7 +50,7 @@ An exact `package-spec` pins Vexcalibur itself. It doesn't pin packages that Vex
 
 ```yaml
 with:
-  package-spec: vexcalibur==0.3.0
+  package-spec: vexcalibur==0.3.1
   constraints-file: ${{ github.workspace }}/.github/vexcalibur-constraints.txt
   args: --help
 ```
@@ -63,7 +63,7 @@ Each nonblank line becomes one argument. For example:
 
 ```yaml
 with:
-  package-spec: vexcalibur==0.3.0
+  package-spec: vexcalibur==0.3.1
   args: |
     generate
     ${{ github.workspace }}/security/sbom.json

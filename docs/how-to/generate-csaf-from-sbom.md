@@ -62,7 +62,7 @@ jobs:
       - name: Generate CSAF VEX
         uses: vexcalibur-dev/vexcalibur-action@f05361ec7308e0ff2cf8b961b7ccca2c001b910b # v0.2.1
         with:
-          package-spec: vexcalibur==0.3.0
+          package-spec: vexcalibur==0.3.1
           args: |
             generate
             ${{ github.workspace }}/security/sbom.cdx.json
