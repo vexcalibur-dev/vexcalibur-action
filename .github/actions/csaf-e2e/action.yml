@@ -1,0 +1,215 @@
+name: CSAF E2E
+description: Generate and validate CSAF 2.0 VEX with local fixtures.
+
+inputs:
+  package-spec:
+    description: Package spec passed through to the Vexcalibur Action.
+    required: true
+  allow-development-package-spec:
+    description: Whether the Vexcalibur Action should allow a development package spec.
+    required: false
+    default: "false"
+  expected-path:
+    description: Optional absolute path to a CSAF golden document.
+    required: false
+    default: ""
+  expected-generator-version:
+    description: Optional exact Vexcalibur generator version expected in the document.
+    required: false
+    default: ""
+  artifact-name:
+    description: Name for the uploaded CSAF artifact.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Prepare output directory
+      shell: bash
+      run: mkdir -p "$RUNNER_TEMP/vexcalibur-csaf"
+
+    - name: Generate CSAF from local findings
+      uses: ./
+      with:
+        package-spec: ${{ inputs.package-spec }}
+        allow-development-package-spec: ${{ inputs.allow-development-package-spec }}
+        args: |
+          generate
+          ${{ github.workspace }}/tests/fixtures/sbom/cyclonedx-xml-1.5-simple.xml
+          --offline
+          --findings-file
+          ${{ github.workspace }}/tests/fixtures/findings/all-analysis-states.json
+          --format
+          csaf
+          --csaf-version
+          2.0
+          --csaf-document-id
+          ACME-VEX-2026-001
+          --csaf-document-title
+          ACME component exploitability assessment
+          --csaf-publisher-name
+          ACME Product Security
+          --csaf-publisher-namespace
+          https://security.example.com
+          --csaf-publisher-category
+          vendor
+          --csaf-document-status
+          final
+          --timestamp
+          2026-07-15T00:00:00Z
+          --output
+          ${{ runner.temp }}/vexcalibur-csaf/acme-vex-2026-001.json
+
+    - name: Validate CSAF
+      shell: bash
+      env:
+        EXPECTED_CSAF_PATH: ${{ inputs.expected-path }}
+        EXPECTED_GENERATOR_VERSION: ${{ inputs.expected-generator-version }}
+      run: |
+        python - <<'PY'
+        from collections import Counter
+        from copy import deepcopy
+        from pathlib import Path
+        import difflib
+        import json
+        import os
+
+        artifact = Path(os.environ["RUNNER_TEMP"]) / "vexcalibur-csaf" / "acme-vex-2026-001.json"
+        document = json.loads(artifact.read_text(encoding="utf-8"))
+
+        assert "$schema" not in document, document
+        metadata = document["document"]
+        assert metadata["category"] == "csaf_vex", metadata
+        assert metadata["csaf_version"] == "2.0", metadata
+        assert metadata["publisher"] == {
+            "category": "vendor",
+            "name": "ACME Product Security",
+            "namespace": "https://security.example.com",
+        }, metadata
+        assert metadata["title"] == "ACME component exploitability assessment", metadata
+
+        tracking = metadata["tracking"]
+        assert tracking["id"] == "ACME-VEX-2026-001", tracking
+        assert tracking["status"] == "final", tracking
+        assert tracking["version"] == "1", tracking
+        assert tracking["initial_release_date"] == "2026-07-15T00:00:00Z", tracking
+        assert tracking["current_release_date"] == "2026-07-15T00:00:00Z", tracking
+        assert tracking["revision_history"] == [
+            {
+                "date": "2026-07-15T00:00:00Z",
+                "number": "1",
+                "summary": "Initial version.",
+            }
+        ], tracking
+
+        engine = tracking["generator"]["engine"]
+        assert engine["name"] == "Vexcalibur", engine
+        actual_generator_version = engine.get("version", "").strip()
+        assert actual_generator_version, engine
+        expected_generator_version = os.environ["EXPECTED_GENERATOR_VERSION"].strip()
+        if expected_generator_version:
+            assert actual_generator_version == expected_generator_version, engine
+
+        products = document["product_tree"]["full_product_names"]
+        assert isinstance(products, list) and len(products) == 2, products
+        product_ids = {product["product_id"] for product in products}
+        assert len(product_ids) == len(products), products
+        for product in products:
+            assert product["product_id"].startswith("CSAFPID-"), product
+            purl = product["product_identification_helper"]["purl"]
+            assert purl.startswith("pkg:") and "@" in purl, product
+
+        vulnerabilities = document.get("vulnerabilities")
+        assert isinstance(vulnerabilities, list) and len(vulnerabilities) == 5, document
+        assert {vulnerability["cve"] for vulnerability in vulnerabilities} == {
+            "CVE-2026-0001",
+            "CVE-2026-0002",
+            "CVE-2026-0003",
+            "CVE-2026-0004",
+            "CVE-2026-0005",
+        }, vulnerabilities
+
+        status_counts = Counter()
+        for vulnerability in vulnerabilities:
+            notes = vulnerability.get("notes")
+            assert isinstance(notes, list) and notes, vulnerability
+            product_status = vulnerability.get("product_status")
+            assert isinstance(product_status, dict) and len(product_status) == 1, vulnerability
+
+            status, status_product_ids = next(iter(product_status.items()))
+            assert isinstance(status_product_ids, list) and status_product_ids, vulnerability
+            assert set(status_product_ids) <= product_ids, vulnerability
+            status_counts[status] += len(status_product_ids)
+
+            if status == "known_affected":
+                remediations = vulnerability.get("remediations")
+                assert isinstance(remediations, list) and remediations, vulnerability
+                covered = set()
+                for remediation in remediations:
+                    assert remediation["category"] in {
+                        "mitigation",
+                        "no_fix_planned",
+                        "none_available",
+                        "vendor_fix",
+                        "workaround",
+                    }, remediation
+                    assert remediation.get("details", "").strip(), remediation
+                    covered.update(remediation["product_ids"])
+                assert covered == set(status_product_ids), vulnerability
+            elif status == "known_not_affected":
+                threats = vulnerability.get("threats")
+                assert isinstance(threats, list) and threats, vulnerability
+                covered = set()
+                for threat in threats:
+                    assert threat["category"] == "impact", threat
+                    assert threat.get("details", "").strip(), threat
+                    covered.update(threat["product_ids"])
+                assert covered == set(status_product_ids), vulnerability
+
+        assert status_counts == {
+            "fixed": 1,
+            "known_affected": 1,
+            "known_not_affected": 2,
+            "under_investigation": 1,
+        }, status_counts
+
+        expected_path_value = os.environ["EXPECTED_CSAF_PATH"].strip()
+        if expected_path_value:
+            expected_path = Path(expected_path_value)
+            expected = json.loads(expected_path.read_text(encoding="utf-8"))
+
+            # A wheel built from a later core main commit can have a development
+            # version while retaining the same CSAF contract. Compare every
+            # golden field except that independently checked build identity.
+            comparable_document = deepcopy(document)
+            comparable_expected = deepcopy(expected)
+            expected_engine = comparable_expected["document"]["tracking"]["generator"]["engine"]
+            assert expected_engine.get("version", "").strip(), expected_engine
+            comparable_document["document"]["tracking"]["generator"]["engine"]["version"] = (
+                expected_engine["version"]
+            )
+
+            if comparable_document != comparable_expected:
+                actual_text = json.dumps(comparable_document, indent=2, sort_keys=True).splitlines()
+                expected_text = json.dumps(comparable_expected, indent=2, sort_keys=True).splitlines()
+                diff = "\n".join(
+                    difflib.unified_diff(
+                        expected_text,
+                        actual_text,
+                        fromfile=str(expected_path),
+                        tofile=str(artifact),
+                        lineterm="",
+                    )
+                )
+                raise SystemExit(f"Generated CSAF did not match the golden fixture:\n{diff}")
+
+        print(f"validated {artifact}")
+        PY
+
+    - name: Upload CSAF
+      if: always()
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      with:
+        name: ${{ inputs.artifact-name }}
+        path: ${{ runner.temp }}/vexcalibur-csaf/acme-vex-2026-001.json
+        if-no-files-found: warn

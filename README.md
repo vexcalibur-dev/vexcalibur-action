@@ -7,9 +7,9 @@
 
 Vexcalibur Action runs the [Vexcalibur command-line interface (CLI)](https://github.com/vexcalibur-dev/vexcalibur) in a GitHub Actions workflow. Use it to generate Vulnerability Exploitability eXchange (VEX) from a software bill of materials (SBOM), query a service that implements the Open Source Vulnerabilities (OSV) API, or run another Vexcalibur command without maintaining a separate installation step.
 
-The action is pre-1.0. Each action release is tested with specific Vexcalibur package versions. The current pair is `vexcalibur-action@v0.2.0` with `vexcalibur==0.2.0`.
+The action is pre-1.0. Each action release is tested with specific Vexcalibur package versions. The current pair is `vexcalibur-action@v0.2.0` with `vexcalibur==0.3.0`.
 
-Current continuous integration (CI) exercises the wrapper on `ubuntu-latest`. It verifies CycloneDX 1.6 and OpenVEX 0.2.0 output with local fixtures.
+Current continuous integration (CI) exercises the wrapper on `ubuntu-latest`. It verifies CycloneDX 1.6, OpenVEX 0.2.0, and CSAF 2.0 VEX output with local fixtures.
 
 ## Try the action
 
@@ -30,13 +30,13 @@ jobs:
       - name: Run Vexcalibur
         uses: vexcalibur-dev/vexcalibur-action@v0.2.0
         with:
-          package-spec: vexcalibur==0.2.0
+          package-spec: vexcalibur==0.3.0
           args: --help
 ```
 
 Save the file as `.github/workflows/vexcalibur.yml` and commit it to the repository's default branch. Run **Vexcalibur** from the **Actions** tab, then open the **Run Vexcalibur** log. A passing job with Vexcalibur's command help is the success signal.
 
-To produce an artifact from an existing SBOM, follow the [CycloneDX](docs/how-to/generate-vex-from-sbom.md) or [OpenVEX](docs/how-to/generate-openvex-from-sbom.md) guide.
+To produce an artifact from an existing SBOM, follow the [CycloneDX](docs/how-to/generate-vex-from-sbom.md), [OpenVEX](docs/how-to/generate-openvex-from-sbom.md), or [CSAF](docs/how-to/generate-csaf-from-sbom.md) guide.
 
 ## Choose what to trust
 
@@ -45,7 +45,7 @@ The action and the Python package are separate trust boundaries. Pin both in rev
 ```yaml
 - uses: vexcalibur-dev/vexcalibur-action@6a028a18b4b7fc15cd5e83056e0013ed0928a483 # v0.2.0
   with:
-    package-spec: vexcalibur==0.2.0
+    package-spec: vexcalibur==0.3.0
     args: --help
 ```
 
@@ -56,7 +56,7 @@ An exact `package-spec` doesn't pin transitive Python dependencies. For repeatab
 ```yaml
 - uses: vexcalibur-dev/vexcalibur-action@v0.2.0
   with:
-    package-spec: vexcalibur==0.2.0
+    package-spec: vexcalibur==0.3.0
     constraints-file: ${{ github.workspace }}/.github/vexcalibur-constraints.txt
     args: --help
 ```
@@ -83,6 +83,7 @@ See the [action reference](docs/reference/action.md) for every input, path and a
 | --- | --- |
 | Generate and upload CycloneDX VEX from a checked-out SBOM | [Generate CycloneDX VEX from an SBOM](docs/how-to/generate-vex-from-sbom.md) |
 | Generate and upload OpenVEX from a checked-out SBOM | [Generate OpenVEX from an SBOM](docs/how-to/generate-openvex-from-sbom.md) |
+| Generate and upload CSAF VEX from a checked-out SBOM | [Generate CSAF VEX from an SBOM](docs/how-to/generate-csaf-from-sbom.md) |
 | Configure an action input or diagnose a failed run | [Action reference](docs/reference/action.md) |
 | Choose an action and package version | [Compatibility reference](docs/reference/compatibility.md) |
 | Publish or recover an action release | [Release the action](docs/how-to/release-action.md) |
