@@ -9,7 +9,8 @@ This table records the combinations verified by this repository:
 | Action ref | Vexcalibur package | Python versions | Status |
 | --- | --- | --- | --- |
 | `main` | Wheel built from `vexcalibur-dev/vexcalibur@main`; `vexcalibur==0.3.0` in separate release-package jobs | `3.10`, `3.14` | Mutable development branch |
-| `v0.2.0` | `vexcalibur==0.3.0` | `3.10`, `3.14` | Current supported pair; includes CycloneDX 1.6, OpenVEX 0.2.0, and CSAF 2.0 VEX output |
+| `v0.2.1` | `vexcalibur==0.3.0` | `3.10`, `3.14` | Current supported pair; includes release-scanner isolation plus CycloneDX 1.6, OpenVEX 0.2.0, and CSAF 2.0 VEX output |
+| `v0.2.0` | `vexcalibur==0.3.0` | `3.10`, `3.14` | Previously tested pair; includes CycloneDX 1.6, OpenVEX 0.2.0, and CSAF 2.0 VEX output |
 | `v0.2.0` | `vexcalibur==0.2.0` | `3.10`, `3.14` | Previously tested pair; includes OpenVEX 0.2.0 output |
 | `v0.2.0` | `vexcalibur==0.1.1` | `3.10`, `3.14` | Previously tested pair; CycloneDX output only |
 | `v0.1.0` | `vexcalibur==0.1.1` | `3.10`, `3.14` | Historical release; no longer receives security fixes |

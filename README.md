@@ -99,11 +99,15 @@ The Vexcalibur repository owns the [CLI reference](https://github.com/vexcalibur
 Run these commands from the repository root after installing Python 3.14 and [actionlint 1.7.12](https://github.com/rhysd/actionlint/releases/tag/v1.7.12):
 
 ```bash
-python -m pip install -r requirements-dev.txt
+python -m pip install \
+  --only-binary=:all: \
+  --require-hashes \
+  -r requirements-dev.txt
 bash -n scripts/*.sh
 shellcheck scripts/*.sh
 actionlint
-git ls-files -z | xargs -0 detect-secrets-hook --baseline .secrets.baseline --
+git ls-files --cached --others --exclude-standard -z \
+  | xargs -0 detect-secrets-hook --baseline .secrets.baseline --
 python -m unittest discover -s tests
 ```
 

@@ -1,0 +1,2 @@
+# Direct dependency used to scan generated release notes.
+detect-secrets==1.5.0

@@ -62,6 +62,48 @@ jobs:
         id: sha
         run: printf 'sha=%s\n' "${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
 
+      - name: Verify compatibility table
+        if: steps.release.outputs.skip != 'true'
+        env:
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+          RELEASE_VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          set -euo pipefail
+
+          python - <<'PY'
+          from pathlib import Path
+          import os
+          import re
+
+          release_tag = os.environ["RELEASE_TAG"]
+          release_version = os.environ["RELEASE_VERSION"]
+          if release_tag != f"v{release_version}":
+              raise SystemExit(f"release tag {release_tag!r} does not match version {release_version!r}")
+
+          ci_text = Path(".github/workflows/ci.yml").read_text(encoding="utf-8")
+          version_match = re.search(
+              r'^\s*VEXCALIBUR_RELEASE_PACKAGE_VERSION:\s*"([^"]+)"\s*$',
+              ci_text,
+              re.MULTILINE,
+          )
+          if version_match is None:
+              raise SystemExit("could not find VEXCALIBUR_RELEASE_PACKAGE_VERSION in ci.yml")
+
+          package_spec = f"vexcalibur=={version_match.group(1)}"
+          compatibility_text = Path("docs/reference/compatibility.md").read_text(encoding="utf-8")
+          row_pattern = re.compile(
+              rf"^\|\s*`{re.escape(release_tag)}`\s*\|\s*`{re.escape(package_spec)}`\s*\|",
+              re.MULTILINE,
+          )
+          if row_pattern.search(compatibility_text) is None:
+              raise SystemExit(
+                  "docs/reference/compatibility.md must include a row for "
+                  f"{release_tag} with `{package_spec}` before publishing"
+              )
+
+          print(f"Compatibility table includes {release_tag} with {package_spec}.")
+          PY
+
       - name: Stop on skipped release
         if: steps.release.outputs.skip == 'true'
         run: echo "Release skipped by commit messages."
@@ -117,12 +159,159 @@ jobs:
           echo "Timed out waiting for CI to pass for ${RELEASE_SHA}." >&2
           exit 1
 
+  generate-release-notes:
+    name: Generate release notes
+    runs-on: ubuntu-latest
+    needs:
+      - resolve
+      - wait-for-ci
+    if: needs.resolve.outputs.skip != 'true'
+    permissions:
+      contents: read
+    outputs:
+      notes_sha256: ${{ steps.notes-digest.outputs.sha256 }}
+    steps:
+      - name: Generate release-note token
+        id: notes-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ vars.AUTOMATION_CLIENT_ID }}
+          private-key: ${{ secrets.AUTOMATION_SECRET }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+          permission-contents: write
+
+      - name: Generate release notes
+        env:
+          RELEASE_TAG: ${{ needs.resolve.outputs.tag }}
+          PREVIOUS_TAG: ${{ needs.resolve.outputs.previous_tag }}
+          RELEASE_SHA: ${{ needs.resolve.outputs.sha }}
+          GH_TOKEN: ${{ steps.notes-token.outputs.token }}
+        run: |
+          set -euo pipefail
+
+          notes_dir="${RUNNER_TEMP}/generated-release-notes"
+          mkdir -p "${notes_dir}"
+
+          args=(
+            "repos/${GITHUB_REPOSITORY}/releases/generate-notes"
+            -f "tag_name=${RELEASE_TAG}"
+            -f "target_commitish=${RELEASE_SHA}"
+          )
+          if [[ -n "${PREVIOUS_TAG}" ]]; then
+            args+=(-f "previous_tag_name=${PREVIOUS_TAG}")
+          fi
+
+          gh api "${args[@]}" --jq .body > "${notes_dir}/release-notes.md"
+          test -s "${notes_dir}/release-notes.md"
+
+      - name: Record release-note digest
+        id: notes-digest
+        run: |
+          set -euo pipefail
+
+          notes_path="${RUNNER_TEMP}/generated-release-notes/release-notes.md"
+          notes_sha256="$(sha256sum "${notes_path}" | cut -d ' ' -f1)"
+          printf 'sha256=%s\n' "${notes_sha256}" >> "$GITHUB_OUTPUT"
+
+      - name: Upload generated release notes
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-notes-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/generated-release-notes/release-notes.md
+          if-no-files-found: error
+          retention-days: 1
+
+  scan-release-notes:
+    name: Scan release notes
+    runs-on: ubuntu-latest
+    needs:
+      - resolve
+      - generate-release-notes
+    if: needs.resolve.outputs.skip != 'true'
+    permissions:
+      contents: read
+    outputs:
+      notes_sha256: ${{ steps.scanned-digest.outputs.sha256 }}
+    steps:
+      - name: Checkout scanner policy
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+          ref: ${{ needs.resolve.outputs.sha }}
+
+      - name: Download generated release notes
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release-notes-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/generated-release-notes
+
+      - name: Verify generated release-note digest
+        env:
+          EXPECTED_SHA256: ${{ needs.generate-release-notes.outputs.notes_sha256 }}
+        run: |
+          set -euo pipefail
+
+          notes_path="${RUNNER_TEMP}/generated-release-notes/release-notes.md"
+          if [[ ! "${EXPECTED_SHA256}" =~ ^[0-9a-f]{64}$ ]]; then
+            echo "Generated release-note digest is malformed." >&2
+            exit 1
+          fi
+          actual_sha256="$(sha256sum "${notes_path}" | cut -d ' ' -f1)"
+          if [[ "${actual_sha256}" != "${EXPECTED_SHA256}" ]]; then
+            echo "Generated release-note digest mismatch." >&2
+            exit 1
+          fi
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.14"
+
+      - name: Install release note scanner
+        run: >-
+          python -m pip install
+          --only-binary=:all:
+          --require-hashes
+          -r requirements-release.txt
+
+      - name: Scan release notes
+        run: |
+          set -euo pipefail
+
+          detect-secrets-hook \
+            --baseline .secrets.baseline \
+            -- "${RUNNER_TEMP}/generated-release-notes/release-notes.md"
+
+      - name: Record scanned release-note digest
+        id: scanned-digest
+        env:
+          EXPECTED_SHA256: ${{ needs.generate-release-notes.outputs.notes_sha256 }}
+        run: |
+          set -euo pipefail
+
+          notes_path="${RUNNER_TEMP}/generated-release-notes/release-notes.md"
+          notes_sha256="$(sha256sum "${notes_path}" | cut -d ' ' -f1)"
+          if [[ "${notes_sha256}" != "${EXPECTED_SHA256}" ]]; then
+            echo "Release-note scanner changed the artifact." >&2
+            exit 1
+          fi
+          printf 'sha256=%s\n' "${notes_sha256}" >> "$GITHUB_OUTPUT"
+
+      - name: Upload scanned release notes
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: scanned-release-notes-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/generated-release-notes/release-notes.md
+          if-no-files-found: error
+          retention-days: 1
+
   publish-release:
     name: Publish GitHub Release
     runs-on: ubuntu-latest
     needs:
       - resolve
-      - wait-for-ci
+      - scan-release-notes
     if: needs.resolve.outputs.skip != 'true'
     permissions:
       contents: read
@@ -149,57 +338,31 @@ jobs:
             exit 1
           fi
 
-      - name: Verify compatibility table
+      - name: Download scanned release notes
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: scanned-release-notes-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/scanned-release-notes
+
+      - name: Verify scanned release-note digest
         env:
-          RELEASE_TAG: ${{ needs.resolve.outputs.tag }}
-          RELEASE_VERSION: ${{ needs.resolve.outputs.version }}
+          EXPECTED_SHA256: ${{ needs.scan-release-notes.outputs.notes_sha256 }}
         run: |
           set -euo pipefail
 
-          python - <<'PY'
-          from pathlib import Path
-          import os
-          import re
+          notes_path="${RUNNER_TEMP}/scanned-release-notes/release-notes.md"
+          if [[ ! "${EXPECTED_SHA256}" =~ ^[0-9a-f]{64}$ ]]; then
+            echo "Scanned release-note digest is malformed." >&2
+            exit 1
+          fi
+          actual_sha256="$(sha256sum "${notes_path}" | cut -d ' ' -f1)"
+          if [[ "${actual_sha256}" != "${EXPECTED_SHA256}" ]]; then
+            echo "Scanned release-note digest mismatch." >&2
+            exit 1
+          fi
 
-          release_tag = os.environ["RELEASE_TAG"]
-          release_version = os.environ["RELEASE_VERSION"]
-          if release_tag != f"v{release_version}":
-              raise SystemExit(f"release tag {release_tag!r} does not match version {release_version!r}")
-
-          ci_text = Path(".github/workflows/ci.yml").read_text(encoding="utf-8")
-          version_match = re.search(
-              r'^\s*VEXCALIBUR_RELEASE_PACKAGE_VERSION:\s*"([^"]+)"\s*$',
-              ci_text,
-              re.MULTILINE,
-          )
-          if version_match is None:
-              raise SystemExit("could not find VEXCALIBUR_RELEASE_PACKAGE_VERSION in ci.yml")
-
-          package_spec = f"vexcalibur=={version_match.group(1)}"
-          compatibility_text = Path("docs/reference/compatibility.md").read_text(encoding="utf-8")
-          row_pattern = re.compile(
-              rf"^\|\s*`{re.escape(release_tag)}`\s*\|\s*`{re.escape(package_spec)}`\s*\|",
-              re.MULTILINE,
-          )
-          if row_pattern.search(compatibility_text) is None:
-              raise SystemExit(
-                  "docs/reference/compatibility.md must include a row for "
-                  f"{release_tag} with `{package_spec}` before publishing"
-              )
-
-          print(f"Compatibility table includes {release_tag} with {package_spec}.")
-          PY
-
-      - name: Set up Python
-        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
-        with:
-          python-version: "3.14"
-
-      - name: Install release note scanner
-        run: python -m pip install -r requirements-dev.txt
-
-      - name: Generate app token
-        id: app-token
+      - name: Generate publication token
+        id: publication-token
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         with:
           client-id: ${{ vars.AUTOMATION_CLIENT_ID }}
@@ -208,41 +371,13 @@ jobs:
           repositories: ${{ github.event.repository.name }}
           permission-contents: write
 
-      - name: Generate release notes
-        env:
-          RELEASE_TAG: ${{ needs.resolve.outputs.tag }}
-          PREVIOUS_TAG: ${{ needs.resolve.outputs.previous_tag }}
-          RELEASE_SHA: ${{ needs.resolve.outputs.sha }}
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
-        run: |
-          set -euo pipefail
-
-          args=(
-            "repos/${GITHUB_REPOSITORY}/releases/generate-notes"
-            -f "tag_name=${RELEASE_TAG}"
-            -f "target_commitish=${RELEASE_SHA}"
-          )
-          if [[ -n "${PREVIOUS_TAG}" ]]; then
-            args+=(-f "previous_tag_name=${PREVIOUS_TAG}")
-          fi
-
-          gh api "${args[@]}" --jq .body > /tmp/vexcalibur-action-release-notes.md
-
-      - name: Scan release notes
-        run: |
-          set -euo pipefail
-
-          detect-secrets-hook \
-            --baseline .secrets.baseline \
-            -- /tmp/vexcalibur-action-release-notes.md
-
       - name: Create release tag
         env:
           RELEASE_TAG: ${{ needs.resolve.outputs.tag }}
           RELEASE_SHA: ${{ needs.resolve.outputs.sha }}
-          RELEASE_TOKEN: ${{ steps.app-token.outputs.token }}
-          APP_SLUG: ${{ steps.app-token.outputs.app-slug }}
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          RELEASE_TOKEN: ${{ steps.publication-token.outputs.token }}
+          APP_SLUG: ${{ steps.publication-token.outputs.app-slug }}
+          GH_TOKEN: ${{ steps.publication-token.outputs.token }}
         run: |
           set -euo pipefail
 
@@ -267,7 +402,7 @@ jobs:
         env:
           RELEASE_TAG: ${{ needs.resolve.outputs.tag }}
           RELEASE_SHA: ${{ needs.resolve.outputs.sha }}
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          GH_TOKEN: ${{ steps.publication-token.outputs.token }}
         run: |
           set -euo pipefail
 
@@ -282,7 +417,7 @@ jobs:
             --verify-tag
             --target "${RELEASE_SHA}"
             --title "${RELEASE_TAG}"
-            --notes-file /tmp/vexcalibur-action-release-notes.md
+            --notes-file "${RUNNER_TEMP}/scanned-release-notes/release-notes.md"
           )
 
           gh "${args[@]}"
