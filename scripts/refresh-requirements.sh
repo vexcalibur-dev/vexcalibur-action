@@ -40,6 +40,8 @@ trap 'rm -rf "${temporary_directory}"' EXIT
 
 compile_lock requirements-release.in "${temporary_directory}/requirements-release.txt"
 compile_lock requirements-dev.in "${temporary_directory}/requirements-dev.txt"
+compile_lock requirements-fuzz.in "${temporary_directory}/requirements-fuzz.txt"
 
 mv "${temporary_directory}/requirements-release.txt" requirements-release.txt
 mv "${temporary_directory}/requirements-dev.txt" requirements-dev.txt
+mv "${temporary_directory}/requirements-fuzz.txt" requirements-fuzz.txt

@@ -1,0 +1,49 @@
+{
+  "accepted-release.seed": {
+    "success": true,
+    "cli_args": ["--help"]
+  },
+  "args-crlf-blank.seed": {
+    "success": true,
+    "cli_args": [
+      "query-osv",
+      "--allow-public-osv",
+      "--",
+      "pkg:pypi/example@1.0",
+      "double-carriage-return\r"
+    ]
+  },
+  "args-literal.seed": {
+    "success": true,
+    "cli_args": [
+      "generate",
+      " value with spaces ",
+      "\"literal quotes\"",
+      "$(not-a-command)",
+      "`not-a-command`",
+      "*.json",
+      "> synthetic-output",
+      "snowman-☃"
+    ]
+  },
+  "constraints-missing.seed": {
+    "success": false,
+    "cli_args": ["--help"]
+  },
+  "constraints-relative.seed": {
+    "success": false,
+    "cli_args": ["--help"]
+  },
+  "constraints-valid.seed": {
+    "success": true,
+    "cli_args": ["--help"]
+  },
+  "development-package.seed": {
+    "success": true,
+    "cli_args": ["--help"]
+  },
+  "rejected-package.seed": {
+    "success": false,
+    "cli_args": ["--help"]
+  }
+}

@@ -9,6 +9,9 @@
 /scripts/ @dannysauer
 /requirements-dev.in @dannysauer
 /requirements-dev.txt @dannysauer
+/requirements-fuzz.in @dannysauer
+/requirements-fuzz.txt @dannysauer
 /requirements-release.in @dannysauer
 /requirements-release.txt @dannysauer
+/tests/fuzz/ @dannysauer
 /tests/test_release_security.py @dannysauer

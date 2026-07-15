@@ -1,0 +1,10 @@
+VAF1
+41
+vexcalibur==1.2.3
+<<<ARGS>>>
+query-osv\r
+
+--allow-public-osv\r
+--\r
+pkg:pypi/example@1.0\r
+double-carriage-return\r\r
