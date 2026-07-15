@@ -7,7 +7,7 @@
 
 Vexcalibur Action runs the [Vexcalibur command-line interface (CLI)](https://github.com/vexcalibur-dev/vexcalibur) in a GitHub Actions workflow. Use it to generate Vulnerability Exploitability eXchange (VEX) from a software bill of materials (SBOM), query a service that implements the Open Source Vulnerabilities (OSV) API, or run another Vexcalibur command without maintaining a separate installation step.
 
-The action is pre-1.0. Each action release is tested with specific Vexcalibur package versions. The current pair is `vexcalibur-action@v0.2.0` with `vexcalibur==0.3.0`.
+The action is pre-1.0. Each action release is tested with specific Vexcalibur package versions. The current pair is `vexcalibur-action@v0.2.1` with `vexcalibur==0.3.0`.
 
 Current continuous integration (CI) exercises the wrapper on `ubuntu-latest`. It verifies CycloneDX 1.6, OpenVEX 0.2.0, and CSAF 2.0 VEX output with local fixtures.
 
@@ -28,7 +28,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Run Vexcalibur
-        uses: vexcalibur-dev/vexcalibur-action@v0.2.0
+        uses: vexcalibur-dev/vexcalibur-action@v0.2.1
         with:
           package-spec: vexcalibur==0.3.0
           args: --help
@@ -43,18 +43,18 @@ To produce an artifact from an existing SBOM, follow the [CycloneDX](docs/how-to
 The action and the Python package are separate trust boundaries. Pin both in reviewed workflows:
 
 ```yaml
-- uses: vexcalibur-dev/vexcalibur-action@6a028a18b4b7fc15cd5e83056e0013ed0928a483 # v0.2.0
+- uses: vexcalibur-dev/vexcalibur-action@f05361ec7308e0ff2cf8b961b7ccca2c001b910b # v0.2.1
   with:
     package-spec: vexcalibur==0.3.0
     args: --help
 ```
 
-An action release tag is readable, but a full release commit SHA is immutable. The example above uses the commit for `v0.2.0`. The [compatibility reference](docs/reference/compatibility.md) lists tested action and package pairs.
+An action release tag is readable, but a full release commit SHA is immutable. The example above uses the commit for `v0.2.1`. The [compatibility reference](docs/reference/compatibility.md) lists tested action and package pairs.
 
 An exact `package-spec` doesn't pin transitive Python dependencies. For repeatable installs, commit a pip constraints file and pass its absolute path:
 
 ```yaml
-- uses: vexcalibur-dev/vexcalibur-action@v0.2.0
+- uses: vexcalibur-dev/vexcalibur-action@v0.2.1
   with:
     package-spec: vexcalibur==0.3.0
     constraints-file: ${{ github.workspace }}/.github/vexcalibur-constraints.txt

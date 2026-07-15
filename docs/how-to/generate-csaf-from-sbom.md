@@ -60,7 +60,7 @@ jobs:
         run: mkdir -p "$RUNNER_TEMP/vexcalibur"
 
       - name: Generate CSAF VEX
-        uses: vexcalibur-dev/vexcalibur-action@6a028a18b4b7fc15cd5e83056e0013ed0928a483 # v0.2.0
+        uses: vexcalibur-dev/vexcalibur-action@f05361ec7308e0ff2cf8b961b7ccca2c001b910b # v0.2.1
         with:
           package-spec: vexcalibur==0.3.0
           args: |
