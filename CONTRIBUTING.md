@@ -45,7 +45,7 @@ The test suites divide responsibility this way:
 
 Hosted continuous integration (CI) also builds a wheel from `vexcalibur-dev/vexcalibur@main`. It exercises the action on Python 3.10 and 3.14 with `--help` and the local fake OSV server.
 
-Artifact jobs compare CycloneDX and OpenVEX output with package-owned golden fixtures. OpenVEX runs against both the development wheel and the pinned PyPI release. None of these checks sends inventory to public OSV.
+Development artifact jobs compare CycloneDX, OpenVEX, and CSAF output with package-owned golden fixtures. Separate OpenVEX and CSAF jobs exercise the pinned PyPI release. None of these checks sends inventory to public OSV.
 
 ## Make a focused change
 
