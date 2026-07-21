@@ -505,10 +505,23 @@ jobs:
           import yaml
 
 
+          def equal_yaml(left: object, right: object) -> bool:
+              if type(left) is not type(right):
+                  return False
+              if isinstance(left, dict):
+                  return left.keys() == right.keys() and all(
+                      equal_yaml(left[key], right[key]) for key in left
+                  )
+              if isinstance(left, list):
+                  return len(left) == len(right) and all(
+                      equal_yaml(item, other)
+                      for item, other in zip(left, right, strict=True)
+                  )
+              return left == right
+
+
           def public_contract(path: Path) -> dict[str, object]:
-              document = yaml.load(
-                  path.read_text(encoding="utf-8"), Loader=yaml.BaseLoader
-              )
+              document = yaml.safe_load(path.read_text(encoding="utf-8"))
               inputs = {
                   name: {
                       key: value
@@ -526,7 +539,7 @@ jobs:
 
           current = public_contract(Path("action.yml"))
           released = public_contract(Path("released-action/action.yml"))
-          if current != released:
+          if not equal_yaml(current, released):
               raise SystemExit("current action contract differs from the released action")
           PY
           cmp scripts/run-vexcalibur.sh released-action/scripts/run-vexcalibur.sh
