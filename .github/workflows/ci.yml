@@ -488,22 +488,41 @@ jobs:
           path: released-action
           persist-credentials: false
 
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.14.5"
+
       - name: Verify released action contract
         run: |
-          normalize_action_contract() {
-            awk '
-              /^inputs:/ { section = "inputs"; print; next }
-              /^runs:/ { section = "runs"; print; next }
-              section == "inputs" && /^    description:/ { in_description = 1; next }
-              section == "inputs" && in_description && /^      / { next }
-              section == "inputs" { in_description = 0; print; next }
-              section == "runs" { print }
-            ' "$1"
-          }
+          python -m pip install \
+            --only-binary=:all: \
+            --require-hashes \
+            -r requirements-release.txt
+          python - <<'PY'
+          from pathlib import Path
 
-          normalize_action_contract action.yml > "$RUNNER_TEMP/current-action-contract.yml"
-          normalize_action_contract released-action/action.yml > "$RUNNER_TEMP/released-action-contract.yml"
-          cmp "$RUNNER_TEMP/current-action-contract.yml" "$RUNNER_TEMP/released-action-contract.yml"
+          import yaml
+
+
+          def public_contract(path: Path) -> dict[str, object]:
+              document = yaml.safe_load(path.read_text(encoding="utf-8"))
+              inputs = {
+                  name: {
+                      key: value
+                      for key, value in configuration.items()
+                      if key != "description"
+                  }
+                  for name, configuration in document["inputs"].items()
+              }
+              return {"inputs": inputs, "runs": document["runs"]}
+
+
+          current = public_contract(Path("action.yml"))
+          released = public_contract(Path("released-action/action.yml"))
+          if current != released:
+              raise SystemExit("current action contract differs from the released action")
+          PY
           cmp scripts/run-vexcalibur.sh released-action/scripts/run-vexcalibur.sh
 
       - name: Generate and validate OpenVEX

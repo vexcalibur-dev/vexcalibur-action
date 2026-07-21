@@ -351,7 +351,7 @@ class ReleaseWorkflowBoundaryTests(unittest.TestCase):
                     checked += 1
                     self.assertIn("--only-binary=:all:", run)
                     self.assertIn("--require-hashes", run)
-        self.assertEqual(checked, 4)
+        self.assertEqual(checked, 5)
         self.assertIn(
             "-r requirements-release.txt",
             step_named(self.jobs["scan-release-notes"], "Install release note scanner")["run"],
@@ -365,6 +365,12 @@ class ReleaseWorkflowBoundaryTests(unittest.TestCase):
         self.assertIn(
             "-r requirements-dev.txt",
             step_named(ci_jobs["wrapper-fuzz-smoke"], "Install development dependencies")["run"],
+        )
+        self.assertIn(
+            "-r requirements-release.txt",
+            step_named(
+                ci_jobs["released-package-openvex"], "Verify released action contract"
+            )["run"],
         )
         fuzz_jobs = load_workflow(FUZZ_WORKFLOW_PATH)["jobs"]
         self.assertIn(
