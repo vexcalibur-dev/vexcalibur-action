@@ -506,7 +506,9 @@ jobs:
 
 
           def public_contract(path: Path) -> dict[str, object]:
-              document = yaml.safe_load(path.read_text(encoding="utf-8"))
+              document = yaml.load(
+                  path.read_text(encoding="utf-8"), Loader=yaml.BaseLoader
+              )
               inputs = {
                   name: {
                       key: value
@@ -515,7 +517,11 @@ jobs:
                   }
                   for name, configuration in document["inputs"].items()
               }
-              return {"inputs": inputs, "runs": document["runs"]}
+              return {
+                  "inputs": inputs,
+                  "outputs": document.get("outputs", {}),
+                  "runs": document["runs"],
+              }
 
 
           current = public_contract(Path("action.yml"))

@@ -372,6 +372,11 @@ class ReleaseWorkflowBoundaryTests(unittest.TestCase):
                 ci_jobs["released-package-openvex"], "Verify released action contract"
             )["run"],
         )
+        contract_verifier = step_named(
+            ci_jobs["released-package-openvex"], "Verify released action contract"
+        )["run"]
+        self.assertIn("Loader=yaml.BaseLoader", contract_verifier)
+        self.assertIn('"outputs": document.get("outputs", {})', contract_verifier)
         fuzz_jobs = load_workflow(FUZZ_WORKFLOW_PATH)["jobs"]
         self.assertIn(
             "-r requirements-fuzz.txt",
