@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 import re
+import tomllib
 import unittest
 
 import yaml
@@ -87,7 +88,7 @@ class DependencyLockTests(unittest.TestCase):
 
         self.assertEqual(
             set(development_packages),
-            set(release_packages) | {"hypothesis", "shellcheck-py", "sortedcontainers"},
+            set(release_packages) | {"hypothesis", "sortedcontainers"},
         )
         for name, release_entry in release_packages.items():
             with self.subTest(package=name):
@@ -240,6 +241,55 @@ class ReleaseWorkflowBoundaryTests(unittest.TestCase):
             checkout = step_named(self.jobs[job_name], step_name)
             self.assertEqual(checkout["with"]["ref"], "${{ github.sha }}")
 
+    def test_version_manager_manifests_are_consistent(self) -> None:
+        tool_versions = {
+            name: version
+            for name, version in (
+                line.split(maxsplit=1)
+                for line in (ROOT / ".tool-versions").read_text(
+                    encoding="utf-8"
+                ).splitlines()
+            )
+        }
+        with (ROOT / "mise.toml").open("rb") as stream:
+            mise_configuration = tomllib.load(stream)
+        with (ROOT / "mise.lock").open("rb") as stream:
+            mise_lock = tomllib.load(stream)
+
+        self.assertTrue(mise_configuration["settings"]["lockfile"])
+        self.assertEqual(mise_configuration["tools"], tool_versions)
+        self.assertEqual(set(mise_lock["tools"]), set(tool_versions))
+        for name, version in tool_versions.items():
+            with self.subTest(tool=name):
+                lock_entries = mise_lock["tools"][name]
+                self.assertEqual(len(lock_entries), 1)
+                lock_entry = lock_entries[0]
+                self.assertEqual(lock_entry["version"], version)
+                for platform in ("linux-x64", "macos-arm64", "macos-x64"):
+                    asset = lock_entry[f"platforms.{platform}"]
+                    self.assertRegex(asset["checksum"], r"^sha256:[0-9a-f]{64}$")
+                    self.assertTrue(asset["url"].startswith("https://"))
+
+        for workflow_path in (
+            CI_WORKFLOW_PATH,
+            FUZZ_WORKFLOW_PATH,
+            RELEASE_WORKFLOW_PATH,
+        ):
+            workflow = load_workflow(workflow_path)
+            for job in workflow["jobs"].values():
+                for step in job.get("steps", []):
+                    if not step.get("uses", "").startswith("actions/setup-python@"):
+                        continue
+                    with self.subTest(workflow=workflow_path, step=step["name"]):
+                        self.assertEqual(
+                            step["with"]["python-version"], tool_versions["python"]
+                        )
+
+        refresh_script = (ROOT / "scripts/refresh-requirements.sh").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn(f"--python-version {tool_versions['python']}", refresh_script)
+
     def test_artifact_digest_is_verified_at_each_boundary(self) -> None:
         generator = self.jobs["generate-release-notes"]
         scanner = self.jobs["scan-release-notes"]
@@ -301,7 +351,7 @@ class ReleaseWorkflowBoundaryTests(unittest.TestCase):
                     checked += 1
                     self.assertIn("--only-binary=:all:", run)
                     self.assertIn("--require-hashes", run)
-        self.assertEqual(checked, 4)
+        self.assertEqual(checked, 5)
         self.assertIn(
             "-r requirements-release.txt",
             step_named(self.jobs["scan-release-notes"], "Install release note scanner")["run"],
@@ -316,6 +366,18 @@ class ReleaseWorkflowBoundaryTests(unittest.TestCase):
             "-r requirements-dev.txt",
             step_named(ci_jobs["wrapper-fuzz-smoke"], "Install development dependencies")["run"],
         )
+        self.assertIn(
+            "-r requirements-release.txt",
+            step_named(
+                ci_jobs["released-package-openvex"], "Verify released action contract"
+            )["run"],
+        )
+        contract_verifier = step_named(
+            ci_jobs["released-package-openvex"], "Verify released action contract"
+        )["run"]
+        self.assertIn("def equal_yaml", contract_verifier)
+        self.assertIn("if type(left) is not type(right):", contract_verifier)
+        self.assertIn('"outputs": document.get("outputs", {})', contract_verifier)
         fuzz_jobs = load_workflow(FUZZ_WORKFLOW_PATH)["jobs"]
         self.assertIn(
             "-r requirements-fuzz.txt",

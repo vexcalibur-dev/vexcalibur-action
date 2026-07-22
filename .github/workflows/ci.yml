@@ -11,7 +11,6 @@ permissions:
   contents: read
 
 env:
-  ACTIONLINT_VERSION: "1.7.12"
   VEXCALIBUR_SOURCE_REF: main
   VEXCALIBUR_CONTRACT_ARTIFACT: vexcalibur-contract-fixtures
   VEXCALIBUR_CSAF_RELEASE_ARTIFACT: csaf-released-package-output
@@ -33,10 +32,17 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Install workflow tools
+        uses: jdx/mise-action@dad1bfd3df957f44999b559dd69dc1671cb4e9ea # v4.2.1
+        with:
+          version: "v2026.7.11"
+          install_args: "actionlint shellcheck"
+          cache: true
+
       - name: Set up Python
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
-          python-version: "3.14"
+          python-version: "3.14.5"
 
       - name: Install development dependencies
         run: >-
@@ -44,11 +50,6 @@ jobs:
           --only-binary=:all:
           --require-hashes
           -r requirements-dev.txt
-
-      - name: Install actionlint
-        run: |
-          go install "github.com/rhysd/actionlint/cmd/actionlint@v${ACTIONLINT_VERSION}"
-          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
 
       - name: Validate shell
         run: |
@@ -118,7 +119,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
-          python-version: "3.14"
+          python-version: "3.14.5"
 
       - name: Install development dependencies
         run: >-
@@ -146,7 +147,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
-          python-version: "3.14"
+          python-version: "3.14.5"
 
       - name: Build wheel
         run: python -m pip wheel --no-deps --wheel-dir "$RUNNER_TEMP/vexcalibur-dist" ./vexcalibur-source
@@ -381,7 +382,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
-          python-version: "3.14"
+          python-version: "3.14.5"
 
       - name: Find latest released package
         id: release
@@ -487,22 +488,60 @@ jobs:
           path: released-action
           persist-credentials: false
 
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.14.5"
+
       - name: Verify released action contract
         run: |
-          normalize_action_contract() {
-            awk '
-              /^inputs:/ { section = "inputs"; print; next }
-              /^runs:/ { section = "runs"; print; next }
-              section == "inputs" && /^    description:/ { in_description = 1; next }
-              section == "inputs" && in_description && /^      / { next }
-              section == "inputs" { in_description = 0; print; next }
-              section == "runs" { print }
-            ' "$1"
-          }
+          python -m pip install \
+            --only-binary=:all: \
+            --require-hashes \
+            -r requirements-release.txt
+          python - <<'PY'
+          from pathlib import Path
 
-          normalize_action_contract action.yml > "$RUNNER_TEMP/current-action-contract.yml"
-          normalize_action_contract released-action/action.yml > "$RUNNER_TEMP/released-action-contract.yml"
-          cmp "$RUNNER_TEMP/current-action-contract.yml" "$RUNNER_TEMP/released-action-contract.yml"
+          import yaml
+
+
+          def equal_yaml(left: object, right: object) -> bool:
+              if type(left) is not type(right):
+                  return False
+              if isinstance(left, dict):
+                  return left.keys() == right.keys() and all(
+                      equal_yaml(left[key], right[key]) for key in left
+                  )
+              if isinstance(left, list):
+                  return len(left) == len(right) and all(
+                      equal_yaml(item, other)
+                      for item, other in zip(left, right, strict=True)
+                  )
+              return left == right
+
+
+          def public_contract(path: Path) -> dict[str, object]:
+              document = yaml.safe_load(path.read_text(encoding="utf-8"))
+              inputs = {
+                  name: {
+                      key: value
+                      for key, value in configuration.items()
+                      if key != "description"
+                  }
+                  for name, configuration in document["inputs"].items()
+              }
+              return {
+                  "inputs": inputs,
+                  "outputs": document.get("outputs", {}),
+                  "runs": document["runs"],
+              }
+
+
+          current = public_contract(Path("action.yml"))
+          released = public_contract(Path("released-action/action.yml"))
+          if not equal_yaml(current, released):
+              raise SystemExit("current action contract differs from the released action")
+          PY
           cmp scripts/run-vexcalibur.sh released-action/scripts/run-vexcalibur.sh
 
       - name: Generate and validate OpenVEX

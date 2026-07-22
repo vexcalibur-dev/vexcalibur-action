@@ -1,12 +1,19 @@
+---
 name: Vexcalibur
-description: Install a selected Vexcalibur package and run its CLI in a GitHub Actions workflow.
+description: >-
+  Install a selected Vexcalibur package and run its CLI in a GitHub Actions
+  workflow.
 
 inputs:
   package-spec:
-    description: Vexcalibur package requirement passed to pip install. An exact release is required by default.
+    description: >-
+      Vexcalibur package requirement passed to pip install. An exact release is
+      required by default.
     required: true
   allow-development-package-spec:
-    description: Set to true to permit a Git URL, local path, or another non-release package spec.
+    description: >-
+      Set to true to permit a Git URL, local path, or another non-release
+      package spec.
     required: false
     default: "false"
   constraints-file:
@@ -20,7 +27,8 @@ inputs:
     required: false
     default: "3.14"
   args:
-    description: Newline-separated CLI arguments. Each nonblank line becomes one argument.
+    description: >-
+      Newline-separated CLI arguments. Each nonblank line becomes one argument.
     required: false
     default: "--help"
 
@@ -29,7 +37,8 @@ runs:
   steps:
     - name: Set up Python
       id: setup-python
-      uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+      # actions/setup-python v6.3.0
+      uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
       with:
         python-version: ${{ inputs.python-version }}
 
@@ -40,7 +49,8 @@ runs:
         BASH_ENV: ""
         VEXCALIBUR_PYTHON: ${{ steps.setup-python.outputs.python-path }}
         VEXCALIBUR_PACKAGE_SPEC: ${{ inputs.package-spec }}
-        VEXCALIBUR_ALLOW_DEVELOPMENT_PACKAGE_SPEC: ${{ inputs.allow-development-package-spec }}
+        VEXCALIBUR_ALLOW_DEVELOPMENT_PACKAGE_SPEC: >-
+          ${{ inputs.allow-development-package-spec }}
         VEXCALIBUR_CONSTRAINTS_FILE: ${{ inputs.constraints-file }}
         VEXCALIBUR_ARGS: ${{ inputs.args }}
       run: '"$GITHUB_ACTION_PATH/scripts/run-vexcalibur.sh"'

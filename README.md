@@ -97,13 +97,33 @@ The Vexcalibur repository owns the [CLI reference](https://github.com/vexcalibur
 
 ## Verify a local change
 
-Run these commands from the repository root after installing Python 3.14 and [actionlint 1.7.12](https://github.com/rhysd/actionlint/releases/tag/v1.7.12):
+Run these commands from the repository root. [`.tool-versions`](.tool-versions)
+pins Python, uv, pre-commit, actionlint, and ShellCheck. Activate the tools with
+one compatible version manager before you start. With mise:
+
+```bash
+mise trust
+mise install
+pre-commit install
+```
+
+With asdf, install the repository-pinned plugins, then install the versions in
+`.tool-versions`:
+
+```bash
+bash scripts/install-asdf-plugins.sh
+asdf install
+pre-commit install
+```
+
+Then run the checks:
 
 ```bash
 python -m pip install \
   --only-binary=:all: \
   --require-hashes \
   -r requirements-dev.txt
+pre-commit run --all-files
 bash -n scripts/*.sh
 shellcheck scripts/*.sh
 actionlint

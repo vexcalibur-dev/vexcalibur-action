@@ -4,18 +4,19 @@ This repository contains a composite GitHub Action, two Bash scripts, and their 
 
 ## Set up the repository
 
-You need Git, Bash, Python 3.14, and [actionlint 1.7.12](https://github.com/rhysd/actionlint/releases/tag/v1.7.12). If actionlint isn't already installed, you can install the pinned version with Go:
+You need Git, Bash, and a version manager that reads
+[`.tool-versions`](.tool-versions), such as mise or asdf. The file pins Python,
+uv, pre-commit, actionlint, and ShellCheck for this repository.
 
-```bash
-go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
-export PATH="$(go env GOPATH)/bin:$PATH"
-```
-
-Clone the repository, enter its root directory, and create a disposable virtual environment:
+Clone the repository, enter its root directory, install the pinned tools, and
+create a disposable virtual environment:
 
 ```bash
 git clone https://github.com/vexcalibur-dev/vexcalibur-action.git
 cd vexcalibur-action
+mise trust
+mise install
+pre-commit install
 python -m venv /tmp/vexcalibur-action-venv
 source /tmp/vexcalibur-action-venv/bin/activate
 python -m pip install \
@@ -24,7 +25,34 @@ python -m pip install \
   -r requirements-dev.txt
 ```
 
-The development lock installs Hypothesis, ShellCheck, PyYAML, the secret scanner, and their complete transitive dependency closure. `--only-binary` rejects source distributions, and `--require-hashes` rejects any distribution that isn't approved in the lock. A successful install ends without a pip error.
+To use asdf instead, install the repository-pinned plugins, then install the
+versions in `.tool-versions` before creating the virtual environment:
+
+```bash
+bash scripts/install-asdf-plugins.sh
+asdf install
+pre-commit install
+```
+
+The development lock installs Hypothesis, PyYAML, the secret scanner, and their
+complete transitive dependency closure. `--only-binary` rejects source
+distributions, and `--require-hashes` rejects any distribution that isn't
+approved in the lock. A successful install ends without a pip error.
+
+## Update development tools
+
+Keep [`.tool-versions`](.tool-versions) and [`mise.toml`](mise.toml) on the
+same exact versions. After changing a tool version, refresh the committed Mise
+artifact metadata for the supported developer platforms:
+
+```bash
+mise trust
+mise lock --platform linux-x64 --platform macos-x64 --platform macos-arm64
+```
+
+[`scripts/install-asdf-plugins.sh`](scripts/install-asdf-plugins.sh) pins the
+asdf plugin commits separately. Update a plugin reference only after reviewing
+the intended upstream revision; do not use `asdf plugin update --all`.
 
 ## Refresh dependency locks
 
@@ -62,7 +90,6 @@ python -m venv /tmp/vexcalibur-action-dev-lock
   --only-binary=:all: \
   --require-hashes \
   -r requirements-dev.txt
-/tmp/vexcalibur-action-dev-lock/bin/shellcheck --version
 /tmp/vexcalibur-action-dev-lock/bin/python -c 'import yaml'
 
 python -m venv /tmp/vexcalibur-action-fuzz-lock
@@ -85,6 +112,7 @@ Each install must finish without a hash, source-distribution, or resolver error.
 Run the same checks from the repository root:
 
 ```bash
+pre-commit run --all-files
 bash -n scripts/*.sh
 shellcheck scripts/*.sh
 actionlint

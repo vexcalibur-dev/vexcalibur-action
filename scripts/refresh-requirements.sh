@@ -24,7 +24,7 @@ compile_lock() {
 
   uv pip compile \
     --quiet \
-    --python-version 3.14 \
+    --python-version 3.14.5 \
     --universal \
     --only-binary=:all: \
     --emit-build-options \
