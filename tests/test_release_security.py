@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 import re
 import subprocess
@@ -61,11 +62,9 @@ class DependencyLockTests(unittest.TestCase):
 
     def test_release_lock_is_complete_and_hashed(self) -> None:
         path = ROOT / "requirements-release.txt"
-        text = path.read_text(encoding="utf-8")
         packages = locked_packages(path)
 
         self.assert_lock_has_no_alternate_sources(path)
-        self.assertIn("--only-binary :all:", text)
         self.assertEqual(
             set(packages),
             {
@@ -130,7 +129,6 @@ class DependencyLockTests(unittest.TestCase):
                 "tomli-w",
             },
         )
-        self.assertIn("--only-binary :all:", path.read_text(encoding="utf-8"))
         for name, development_entry in development_packages.items():
             with self.subTest(package=name):
                 self.assertEqual(fuzz_packages[name], development_entry)
@@ -153,18 +151,95 @@ class DependencyLockTests(unittest.TestCase):
                         continue
                     self.assertIsNotNone(PIN_PATTERN.fullmatch(line))
 
-    def test_dependabot_covers_all_root_python_locks(self) -> None:
-        config = yaml.safe_load(
-            (ROOT / ".github" / "dependabot.yml").read_text(encoding="utf-8")
-        )
-        python_updates = [
-            update
-            for update in config["updates"]
-            if update["package-ecosystem"] == "pip"
-        ]
+    def test_direct_requirements_match_their_generated_locks(self) -> None:
+        for input_filename, output_filename in (
+            ("requirements-release.in", "requirements-release.txt"),
+            ("requirements-dev.in", "requirements-dev.txt"),
+            ("requirements-fuzz.in", "requirements-fuzz.txt"),
+        ):
+            locked = locked_packages(ROOT / output_filename)
+            for raw_line in (
+                (ROOT / input_filename).read_text(encoding="utf-8").splitlines()
+            ):
+                line = raw_line.strip()
+                if not line or line.startswith("#") or line.startswith("-r "):
+                    continue
+                pin_match = PIN_PATTERN.fullmatch(line)
+                if pin_match is None:
+                    self.fail(f"{input_filename} has a non-pin requirement: {line}")
+                name = pin_match.group(1).lower().replace("_", "-")
+                with self.subTest(input=input_filename, package=name):
+                    self.assertIn(name, locked)
+                    self.assertEqual(locked[name][0], pin_match.group(2))
 
-        self.assertEqual(len(python_updates), 1)
-        self.assertEqual(python_updates[0]["directory"], "/")
+    def test_locks_declare_renovate_compatible_uv_compile_commands(self) -> None:
+        for output_filename, input_filename in (
+            ("requirements-release.txt", "requirements-release.in"),
+            ("requirements-dev.txt", "requirements-dev.in"),
+            ("requirements-fuzz.txt", "requirements-fuzz.in"),
+        ):
+            with self.subTest(output=output_filename):
+                header = "\n".join(
+                    (ROOT / output_filename)
+                    .read_text(encoding="utf-8")
+                    .splitlines()[:2]
+                )
+                self.assertIn("#    uv pip compile", header)
+                self.assertIn(
+                    "--constraints=requirements-build-constraints.txt",
+                    header,
+                )
+                self.assertIn(
+                    f"--output-file={output_filename} {input_filename}",
+                    header,
+                )
+
+    def test_build_constraint_requires_binary_distributions(self) -> None:
+        build_constraints = (ROOT / "requirements-build-constraints.txt").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertEqual(build_constraints, "--only-binary :all:\n")
+
+    def test_renovate_update_policy_is_explicit(self) -> None:
+        configuration = json.loads((ROOT / "renovate.json").read_text(encoding="utf-8"))
+
+        self.assertEqual(configuration["timezone"], "America/Chicago")
+        self.assertEqual(configuration["schedule"], ["* 8-11 * * 1"])
+        self.assertEqual(configuration["prHourlyLimit"], 2)
+        self.assertEqual(
+            configuration["enabledManagers"],
+            ["github-actions", "pip-compile"],
+        )
+        self.assertEqual(
+            configuration["pip-compile"],
+            {
+                "managerFilePatterns": [
+                    "/(^|/)requirements-(dev|fuzz|release)\\.txt$/",
+                ],
+            },
+        )
+        self.assertEqual(configuration["pip_requirements"], {"enabled": False})
+        self.assertEqual(configuration["constraints"], {"uv": "0.11.28"})
+        self.assertEqual(configuration["vulnerabilityAlerts"], {"enabled": False})
+        self.assertIn("helpers:pinGitHubActionDigests", configuration["extends"])
+        self.assertNotIn("automergeType", configuration)
+        self.assertNotIn("platformAutomerge", configuration)
+        self.assertEqual(
+            configuration["packageRules"],
+            [
+                {
+                    "description": "Group reviewable GitHub Actions updates.",
+                    "matchManagers": ["github-actions"],
+                    "groupName": "GitHub Actions",
+                },
+                {
+                    "description": "Group reviewable compiled Python updates.",
+                    "matchManagers": ["pip-compile"],
+                    "groupName": "Python requirements",
+                },
+            ],
+        )
 
     def test_clean_runner_release_commands_start_without_site_packages(self) -> None:
         commands = (

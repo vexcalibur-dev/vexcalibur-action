@@ -6,10 +6,12 @@
 /.github/actions/ @dannysauer
 /.github/workflows/ @dannysauer
 /action.yml @dannysauer
+/renovate.json @dannysauer
 /action-compatibility.json @dannysauer
 /scripts/ @dannysauer
 /requirements-dev.in @dannysauer
 /requirements-dev.txt @dannysauer
+/requirements-build-constraints.txt @dannysauer
 /requirements-fuzz.in @dannysauer
 /requirements-fuzz.txt @dannysauer
 /requirements-release.in @dannysauer
