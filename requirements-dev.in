@@ -3,3 +3,4 @@
 # Direct dependencies used by repository validation.
 Hypothesis==6.156.6
 PyYAML==6.0.3
+Ruff==0.15.22

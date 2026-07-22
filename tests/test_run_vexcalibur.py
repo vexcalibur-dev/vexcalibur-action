@@ -65,7 +65,7 @@ class RunVexcaliburScriptTests(unittest.TestCase):
                 "generate\n"
                 "--output\n"
                 "/tmp/vex output.json\n"
-                "--label=\"literal quotes stay literal\"\n"
+                '--label="literal quotes stay literal"\n'
                 " leading-and-trailing-spaces \n"
                 "--\n"
                 "--option-like-data\n"
@@ -80,7 +80,7 @@ class RunVexcaliburScriptTests(unittest.TestCase):
                     "generate\n"
                     "--output\n"
                     "/tmp/vex output.json\n"
-                    "--label=\"literal quotes stay literal\"\n"
+                    '--label="literal quotes stay literal"\n'
                     " leading-and-trailing-spaces \n"
                     "--\n"
                     "--option-like-data\n"
@@ -175,7 +175,10 @@ class RunVexcaliburScriptTests(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertEqual(managed_calls.read_text(), "--help\n")
             self.assertFalse(env_calls.exists())
-            self.assertIn("pip --isolated --no-cache-dir install vexcalibur==0.1.0", python_calls.read_text())
+            self.assertIn(
+                "pip --isolated --no-cache-dir install vexcalibur==0.1.0",
+                python_calls.read_text(),
+            )
 
     def test_managed_install_bin_ignores_path_and_env_override(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -257,7 +260,9 @@ class RunVexcaliburScriptTests(unittest.TestCase):
             result = run_script(env)
 
             self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertEqual(managed_calls.read_text(), f"query-osv\n--\n{private_arg}\n")
+            self.assertEqual(
+                managed_calls.read_text(), f"query-osv\n--\n{private_arg}\n"
+            )
             python_log = python_calls.read_text()
             self.assertNotIn(private_arg, python_log)
             self.assertNotIn("caller-exported-lowercase-args", python_log)
@@ -308,13 +313,18 @@ class RunVexcaliburScriptTests(unittest.TestCase):
             ]
             self.assertEqual(len(setup_commands), 1, setup_commands)
             self.assertTrue(setup_commands[0].startswith("-I -c "), setup_commands[0])
-            self.assertTrue(setup_commands[0].endswith(f" {runner_temp}"), setup_commands[0])
+            self.assertTrue(
+                setup_commands[0].endswith(f" {runner_temp}"), setup_commands[0]
+            )
             self.assertEqual(
                 read_command_env(python_calls, f"-I -m venv {venv_path}"),
                 _empty_python_tool_env(),
             )
             self.assertEqual(
-                read_command_env(python_calls, "-I -m pip --isolated --no-cache-dir install vexcalibur==0.1.0"),
+                read_command_env(
+                    python_calls,
+                    "-I -m pip --isolated --no-cache-dir install vexcalibur==0.1.0",
+                ),
                 {
                     **_empty_python_tool_env(),
                     "PIP_CACHE_DIR": str(pip_cache_dir),
@@ -437,7 +447,9 @@ class RunVexcaliburScriptTests(unittest.TestCase):
             result = run_script(env)
 
             self.assertEqual(result.returncode, 2)
-            self.assertIn("constraints-file does not exist or is not readable", result.stderr)
+            self.assertIn(
+                "constraints-file does not exist or is not readable", result.stderr
+            )
             self.assertFalse(python_calls.exists())
 
     def test_relative_constraints_file_is_rejected(self) -> None:

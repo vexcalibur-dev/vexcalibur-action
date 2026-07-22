@@ -2,7 +2,8 @@
 
 Vexcalibur Action is a composite GitHub Action that installs a selected Vexcalibur Python package and invokes its `vexcalibur` executable. It doesn't add a second command model: commands, flags, input formats, and Vulnerability Exploitability eXchange (VEX) output belong to the [Vexcalibur command-line interface (CLI)](https://github.com/vexcalibur-dev/vexcalibur/blob/main/docs/reference/cli.md).
 
-The action is pre-1.0. Inputs and defaults may change between release lines.
+Input and default changes follow the semantic-version rules in the
+[release runbook](../how-to/release-action.md#tag-calculation).
 
 ## Runner requirements
 
@@ -31,7 +32,8 @@ with:
   package-spec: vexcalibur==0.3.1
 ```
 
-The [compatibility reference](compatibility.md) lists package versions tested with each action release.
+The [compatibility reference](compatibility.md) explains how to read the package
+and Python versions snapshotted by an action release.
 
 Set `allow-development-package-spec: "true"` only for a package source you trust. This example installs the current development branch:
 
@@ -179,6 +181,7 @@ The action returns the first failure it encounters:
 - [Generate CycloneDX VEX from an SBOM](../how-to/generate-vex-from-sbom.md) provides a complete CycloneDX artifact workflow.
 - [Generate OpenVEX from an SBOM](../how-to/generate-openvex-from-sbom.md) provides a complete OpenVEX artifact workflow.
 - [Generate CSAF VEX from an SBOM](../how-to/generate-csaf-from-sbom.md) provides a complete CSAF artifact workflow.
-- [Compatibility reference](compatibility.md) lists tested release pairs and CI coverage.
+- [Compatibility reference](compatibility.md) explains release metadata and CI
+  coverage.
 - [Vexcalibur CLI reference](https://github.com/vexcalibur-dev/vexcalibur/blob/main/docs/reference/cli.md) defines commands and provider-specific failures.
 - [Contributing](../../CONTRIBUTING.md) gives the local verification commands for changes to this wrapper.

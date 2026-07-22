@@ -9,6 +9,10 @@ inputs:
     description: Whether the Vexcalibur Action should allow a development package spec.
     required: false
     default: "false"
+  python-version:
+    description: Python version passed through to the Vexcalibur Action.
+    required: false
+    default: "3.14"
   expected-path:
     description: Optional absolute path to a CSAF golden document.
     required: false
@@ -33,6 +37,7 @@ runs:
       with:
         package-spec: ${{ inputs.package-spec }}
         allow-development-package-spec: ${{ inputs.allow-development-package-spec }}
+        python-version: ${{ inputs.python-version }}
         args: |
           generate
           ${{ github.workspace }}/tests/fixtures/sbom/cyclonedx-xml-1.5-simple.xml

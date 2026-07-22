@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import json
-import os
 from pathlib import Path
 import re
 import shlex
@@ -244,7 +243,9 @@ def _exercise_case(case: WrapperCase, root: Path) -> None:
         expected_error = expected_validation_error(case)
         _require(expected_error is not None, f"missing failure model for {case!r}")
         _require(expected_error in completed.stderr, _result_message(case, completed))
-        _require(not python_log.exists(), "validation failure reached the Python boundary")
+        _require(
+            not python_log.exists(), "validation failure reached the Python boundary"
+        )
         _require(not cli_log.exists(), "validation failure reached the CLI boundary")
         return
 
@@ -268,7 +269,9 @@ def _exercise_case(case: WrapperCase, root: Path) -> None:
     )
 
     venv_argv = venv_event["argv"]
-    _require(venv_argv[:3] == ["-I", "-m", "venv"], f"unexpected venv argv: {venv_argv!r}")
+    _require(
+        venv_argv[:3] == ["-I", "-m", "venv"], f"unexpected venv argv: {venv_argv!r}"
+    )
     _require(len(venv_argv) == 4, f"unexpected venv argv: {venv_argv!r}")
     venv_dir = Path(venv_argv[-1])
     action_work_dir = venv_dir.parent
@@ -286,9 +289,18 @@ def _exercise_case(case: WrapperCase, root: Path) -> None:
     if case.constraints_kind == 1:
         expected_pip_argv.extend(["--constraint", str(constraints_file)])
     expected_pip_argv.append(case.package_spec)
-    _require(pip_event["argv"] == expected_pip_argv, f"unexpected pip argv: {pip_event['argv']!r}")
-    _require(Path(pip_event["cwd"]) == action_work_dir, f"pip ran outside action work dir: {pip_event!r}")
-    _require(cli_events[0]["argv"] == expected_cli_args(case), f"unexpected CLI argv: {cli_events!r}")
+    _require(
+        pip_event["argv"] == expected_pip_argv,
+        f"unexpected pip argv: {pip_event['argv']!r}",
+    )
+    _require(
+        Path(pip_event["cwd"]) == action_work_dir,
+        f"pip ran outside action work dir: {pip_event!r}",
+    )
+    _require(
+        cli_events[0]["argv"] == expected_cli_args(case),
+        f"unexpected CLI argv: {cli_events!r}",
+    )
     _require(
         Path(cli_events[0]["cwd"]) == action_work_dir,
         f"CLI ran outside action work dir: {cli_events!r}",
@@ -381,7 +393,17 @@ def _write_hostile_commands(directory: Path, marker: Path) -> None:
             "raise SystemExit(91)",
         )
     )
-    for command_name in ("mkdir", "mktemp", "pip", "pip3", "pipx", "python", "python3", "uv", "vexcalibur"):
+    for command_name in (
+        "mkdir",
+        "mktemp",
+        "pip",
+        "pip3",
+        "pipx",
+        "python",
+        "python3",
+        "uv",
+        "vexcalibur",
+    ):
         command = directory / command_name
         command.write_text(program, encoding="utf-8")
         command.chmod(command.stat().st_mode | stat.S_IXUSR)
@@ -396,7 +418,9 @@ def _require(condition: bool, message: str) -> None:
         raise AssertionError(message)
 
 
-def _result_message(case: WrapperCase, completed: subprocess.CompletedProcess[str]) -> str:
+def _result_message(
+    case: WrapperCase, completed: subprocess.CompletedProcess[str]
+) -> str:
     return (
         f"case={case!r} returncode={completed.returncode} "
         f"stdout={completed.stdout!r} stderr={completed.stderr!r}"

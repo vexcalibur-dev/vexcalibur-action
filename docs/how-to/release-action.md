@@ -1,176 +1,487 @@
 # Release the action
 
-Use this runbook to publish a Vexcalibur Action release or recover a run that created the tag but not the GitHub Release.
+Use this runbook to publish Vexcalibur Action or recover a current-format tag
+whose GitHub Release was not created.
 
-A release tag is permanent. If a published action is wrong, fix forward with a new version; don't move or reuse the tag.
+The annotated Git tag is the only action version. Release versions are not
+stored in source files. A release tag can never move, be deleted, or be reused.
+If a release is wrong, fix it under a later tag. Mutable aliases are branches,
+not tags.
 
-The workflow won't write a tag until continuous integration (CI) passes on the exact release commit.
+The workflow creates no tag until CI passes for the exact release commit.
 
 ## Before you merge
 
-Confirm all of these conditions:
+Confirm these conditions:
 
-- The release candidate is based on the current `main` branch.
-- The full local check suite in [Contributing](../../CONTRIBUTING.md) passes.
-- `.github/workflows/ci.yml` sets `VEXCALIBUR_RELEASE_PACKAGE_VERSION` to the exact package release this action version supports.
-- The prospective action tag and `vexcalibur==...` spec appear together in [the compatibility table](../reference/compatibility.md).
-- The release and development dependency locks pass the checks in [Contributing](../../CONTRIBUTING.md#refresh-dependency-locks).
+- The candidate is based on the current `main` branch.
+- The local checks in [Contributing](../../CONTRIBUTING.md) pass.
+- `action-compatibility.json` names only the package and Python versions that CI
+  exercises.
+- The release and development dependency locks pass the checks in
+  [Contributing](../../CONTRIBUTING.md#refresh-dependency-locks).
+- The organization enforces GitHub release immutability for the repository.
 - The `vexcalibur-dev` automation GitHub App is installed on this repository.
-- The organization variable `AUTOMATION_CLIENT_ID` and secret `AUTOMATION_SECRET` are available to the repository.
-- The app can write repository contents for this repository. The release workflow uses that permission to create tags and GitHub Releases.
+- The organization variable `AUTOMATION_CLIENT_ID` and secret
+  `AUTOMATION_SECRET` are available to the repository.
+- The organization variable `RELEASE_POLICY_ATTESTATION` contains current
+  owner-reviewed ruleset evidence for this repository.
+- The App can read repository administration settings and write repository
+  contents. The active `restricted release tag creation` ruleset allows only
+  that App to create `v*` tags. The active `immutable release tags` ruleset
+  blocks updates and deletion with no bypass.
+- `gh auth status` succeeds for the maintainer who will verify or dispatch the
+  release.
 
-Fetch release tags and inspect the version calculation from the repository root:
+In Bash, fetch tags and inspect the plan from the repository root:
 
 ```bash
 git fetch --tags origin
-scripts/next-release-tag.sh
+scripts/release.py plan
 ```
 
-The command only prints its decision; it doesn't create a tag. Check `skip`, `tag`, `version`, `previous_tag`, and `bump` before you merge. If the proposed tag isn't in the compatibility table, update the table in the same pull request.
+The command prints `operation`, `tag`, `previous_tag`, `bump`, `sha`,
+`notes_format`, `expected_notes_sha256`, `expected_tag_graph_sha256`, and
+`make_latest`. The notes digest is empty for a new release and populated during
+recovery. The graph digest binds every existing release tag name, tag object,
+and target commit. The latest flag is true for a new release or recovery of the
+highest tag, and false otherwise. The command does not write a tag or source
+file. `operation=publish` proposes a new tag at the current commit,
+`operation=recover` selects an existing tag without changing it, and
+`operation=skip` creates nothing.
 
-## How the workflow publishes
+Confirm the repository inherits enforced immutable releases from the
+organization:
 
-The release pipeline follows this path:
+```bash
+IMMUTABLE_STATE="$(
+  gh api repos/vexcalibur-dev/vexcalibur-action/immutable-releases \
+    --jq '[.enabled, .enforced_by_owner] | @tsv'
+)"
+if [[ "${IMMUTABLE_STATE}" != $'true\ttrue' ]]; then
+  printf 'Unexpected immutable-release state: %s\n' "${IMMUTABLE_STATE}" >&2
+  exit 1
+fi
+printf 'Immutable releases are enforced by the organization.\n'
+```
+
+Run the command in Bash with a GitHub account that can read repository
+administration settings. It prints a success message only when both settings
+are true. Stop before merge if it fails.
+
+Confirm that the App registration grants read access to repository
+administration settings:
+
+```bash
+APP_ADMINISTRATION_PERMISSION="$(
+  gh api apps/vexcalibur-dev-automation \
+    --jq '.permissions.administration // "missing"'
+)"
+if [[ "${APP_ADMINISTRATION_PERMISSION}" != "read" ]]; then
+  printf \
+    'Unexpected App administration permission: %s\n' \
+    "${APP_ADMINISTRATION_PERMISSION}" >&2
+  exit 1
+fi
+printf 'The automation App can read repository administration settings.\n'
+```
+
+This checks the live App registration. The organization owner must also approve
+the changed permission for the installed App. Stop before merge if GitHub shows
+that the installation is waiting for approval.
+
+GitHub omits ruleset bypass principals from responses unless the caller can
+write the ruleset. Keep that permission away from the publishing App. Instead,
+an organization owner must run this preflight with an authenticated `gh`
+session before enabling or changing release automation:
+
+```bash
+set -euo pipefail
+
+POLICY_DIR="$(mktemp -d)"
+trap 'rm -rf "${POLICY_DIR}"' EXIT
+IMMUTABLE_ID="$(
+  gh api repos/vexcalibur-dev/vexcalibur-action/rulesets \
+    --jq '.[] | select(.name == "immutable release tags") | .id'
+)"
+CREATION_ID="$(
+  gh api repos/vexcalibur-dev/vexcalibur-action/rulesets \
+    --jq '.[] | select(.name == "restricted release tag creation") | .id'
+)"
+APP_ID="$(gh api apps/vexcalibur-dev-automation --jq .id)"
+gh api \
+  "repos/vexcalibur-dev/vexcalibur-action/rulesets/${IMMUTABLE_ID}" \
+  > "${POLICY_DIR}/immutable.json"
+gh api \
+  "repos/vexcalibur-dev/vexcalibur-action/rulesets/${CREATION_ID}" \
+  > "${POLICY_DIR}/creation.json"
+POLICY_ATTESTATION="$(
+  scripts/release.py attest-rulesets \
+    --immutable-json "${POLICY_DIR}/immutable.json" \
+    --creation-json "${POLICY_DIR}/creation.json" \
+    --repository vexcalibur-dev/vexcalibur-action \
+    --app-id "${APP_ID}"
+)"
+gh variable set RELEASE_POLICY_ATTESTATION \
+  --org vexcalibur-dev \
+  --repos vexcalibur-action \
+  --body "${POLICY_ATTESTATION}"
+scripts/release.py verify-attested-rulesets \
+  --immutable-json "${POLICY_DIR}/immutable.json" \
+  --creation-json "${POLICY_DIR}/creation.json" \
+  --attestation <(
+    gh variable get RELEASE_POLICY_ATTESTATION \
+      --org vexcalibur-dev
+  ) \
+  --repository vexcalibur-dev/vexcalibur-action \
+  --app-id "${APP_ID}"
+```
+
+The final command prints `verified live release rules against the owner policy
+attestation`. Run this preflight again after any change to either ruleset. A
+runtime response that omits bypass principals is accepted only while its live
+ruleset IDs and revision timestamps match this owner-reviewed evidence.
+
+## Publication sequence
+
+This diagram follows the trust and publication sequence from a push to `main`
+through the immutable Git tag and GitHub Release.
 
 ```mermaid
 flowchart LR
-    Push[Push to main] --> Resolve[Resolve version]
-    Resolve -->|No release type| Stop[Stop]
-    Resolve -->|Release required| CI[Wait for CI on the same commit]
-    CI --> Notes[Generate notes on a clean runner]
-    Notes --> Generated[Upload notes and record SHA-256]
-    Generated --> Scan[Verify and scan on a clean runner]
-    Scan --> Scanned[Upload scanned notes and record SHA-256]
-    Scanned --> Verify[Verify on a clean publisher]
-    Verify --> Token[Create publication token]
-    Token --> Tag[Create annotated tag]
-    Tag --> Release[Publish GitHub Release]
+    Push[Push to main] --> Plan[Plan from tags and Git history]
+    Plan -->|No release type| Stop[Stop]
+    Plan -->|Publish or recover| Manifest[Read manifest at target commit]
+    Manifest --> CI[Require CI on tooling and target commits]
+    CI --> Notes[Render deterministic notes]
+    Notes --> Scan[Verify and scan on a clean runner]
+    Scan --> Tag[Create or verify append-only tag]
+    Tag --> Release[Create or verify GitHub Release]
 ```
 
-In text: a push to `main` either stops after version classification or waits for CI on that exact commit. One clean runner generates release notes and uploads them with a separately recorded SHA-256 digest. A second runner verifies that digest, installs the wheel-only, hash-locked scanner closure, scans the notes, and uploads a new artifact with its digest. A third clean runner downloads the scanned artifact and verifies its digest before it creates an annotated tag and publishes the release.
+The default workflow token remains read-only. The generator renders release
+notes from the immutable commit range and target manifest, then records the
+artifact digest. A second runner verifies and scans those exact bytes. The
+publisher independently requires the scanned artifact and digest to match the
+generator's digest before it mints a repository-scoped App token. Before it
+creates a tag, it verifies owner-enforced immutable releases and both named tag
+rulesets through the GitHub API.
 
-The default workflow token has read-only `actions` and `contents` permissions. GitHub's generated-release-notes endpoint requires contents-write permission, so the generator creates a short-lived, repository-scoped app token after CI passes. That token and runner end before the scanner starts. The scanner receives no app token, referenced repository secret, restored dependency cache, or publication credential. Its filesystem, package cache, and `PATH` state are discarded before the publisher starts. The final publisher installs no packages, executes no scanner, and creates a new publication token only after the scanned artifact passes digest verification. Generated and scanned artifacts expire after one day.
+The annotated tag binds five facts: tag name, target commit, compatibility
+manifest digest, release-note format, and release-note digest. The tag refspec
+is create-only: it has no force, update, or delete path. The mutable coordination
+branch uses an exact force-with-lease. If the remote tag already exists, the
+workflow fetches it into an isolated temporary ref and requires the target and
+complete annotation to match. If the tag is absent, the workflow requires the
+complete remote tag graph to match the digest captured during planning. It also
+rejects a target commit that already has a strict release tag. A changed name,
+tag object, target, or extra lower tag stops publication.
 
-## Version rules
+Tag creation and the mutable `release-coordination` branch advance in one
+atomic Git push guarded by an exact lease. Concurrent publishers can therefore
+create at most one new tag from the same observed state. The coordination
+branch is internal state, not a release identity or a consumer ref; only the
+annotated tag identifies a version.
 
-`scripts/next-release-tag.sh` reads commit messages since the latest valid `vMAJOR.MINOR.PATCH` tag:
+The note format is a release protocol, not an action version. Format `1` renders
+commit subjects as literal code, so a subject cannot activate a link or notify
+a GitHub user or team. Golden tests freeze the format and its manifest parser.
+A future manifest schema, path, or note layout must use a new protocol value
+while the renderer keeps support for every format used by a recoverable tag.
+
+The GitHub Release is a convenience projection of that tag. At publication or
+recovery time, the workflow requires the exact scanned notes, App author, tag
+name, title, public state, immutable state, and an empty asset list. GitHub's
+immutable-release setting protects the associated tag and release assets, but
+it still permits title and body edits. The annotated tag and its release-note
+digest remain authoritative. GitHub ignores `target_commitish` when a tag
+already exists, so the workflow verifies the remote tag object instead.
+
+A new highest tag becomes the latest GitHub Release. Recovery of the highest
+tag does the same, but recovery of an older tag explicitly opts out. The
+workflow checks the `/releases/latest` endpoint after publication so an older
+recovery cannot replace the current release in GitHub's UI or API.
+
+Release-note artifact names pass from each producer job to its consumer. A
+rerun of failed jobs therefore reuses artifacts from successful jobs in the
+original attempt instead of looking for files under the new attempt number.
+These artifacts expire after one day, so rerun failed jobs before then. After
+they expire, start a new Release workflow run and inspect its plan. Supply an
+explicit tag only when the planner reports `operation=recover`; never alter the
+existing tag.
+
+## Tag calculation
+
+`scripts/release.py plan` examines every commit since the highest strict
+`vMAJOR.MINOR.PATCH` tag:
 
 | Commit message | Result |
 | --- | --- |
-| No previous release tag | Initial `v0.1.0` release |
-| `type!:` or a `BREAKING CHANGE:` / `BREAKING-CHANGE:` footer | Major bump |
+| `type!:` or a `BREAKING CHANGE:` / `BREAKING-CHANGE:` entry in the final footer paragraph | Major bump |
 | `feat:` | Minor bump |
 | `fix:`, `perf:`, `refactor:`, `deps:`, or `revert:` | Patch bump |
 | `build(deps):`, `chore(deps):`, or a Git-generated `Revert "..."` | Patch bump |
 | Only `docs:`, `test:`, `ci:`, or unrecognized types | No release |
-| Current commit message contains `[skip release]` or `[release skip]` | No automatic release |
-| Manual workflow version | The requested version, subject to the rules below |
+| A commit containing `[skip release]` or `[release skip]` | That commit never contributes to a later bump |
+| No previous release tag | Manual dispatch must supply the first tag |
 
-Scopes are accepted, as in `feat(action): ...`. A breaking marker takes precedence over feature and patch messages; a feature takes precedence over patch messages.
+Scopes are accepted, as in `feat(action): ...`. A breaking change wins over a
+feature or patch; a feature wins over a patch. Text elsewhere in a commit body
+does not act as a breaking footer.
 
-A manual version must:
+CI also runs `scripts/check-action-contract.py` against `action.yml` and
+`action-compatibility.json` at the highest release tag. Release metadata sets a
+minimum bump:
 
-- Use `MAJOR.MINOR.PATCH`, with an optional leading `v`.
-- Contain no leading zeros.
+| Contract change | Minimum bump |
+| --- | --- |
+| Description-only change | None |
+| Add an optional input, an input with a default, or an output | Minor |
+| Remove an input or output | Major |
+| Change an input default or output value | Major |
+| Make an input required, or add one without a default | Major |
+| Change `runs.using` | Major |
+| Add an input deprecation warning | Minor |
+| Change or remove an input deprecation warning | Patch |
+| Change the tested Vexcalibur package | Patch |
+| Add a tested Python version | Minor |
+| Remove a tested Python version | Major |
+| Reformat `action-compatibility.json` without changing its values | None |
+
+The commit range must meet both classifiers. The release planner repeats the
+contract comparison against the same tag graph it uses for the next version,
+so a newer tag can't make an earlier CI result authorize a smaller bump. For
+example, adding an optional input under a `fix:` commit fails CI because that
+public addition needs a minor release.
+
+An explicit tag must:
+
+- Use `vMAJOR.MINOR.PATCH` without leading zeros.
 - Keep each numeric component at or below `999999`.
-- Be greater than the latest release, unless it names the latest tag already attached to the current `main` commit for recovery.
+- Exceed the highest tag when creating a release.
+- Meet or exceed the bump required by unskipped commits.
+- Meet or exceed the bump required by the public contract and compatibility
+  declaration.
+- Identify a commit that has no other release tag.
 
-Pre-release and build suffixes aren't accepted for action tags.
+Pre-release and build suffixes are rejected. Before planning, the module also
+requires every strict release tag to be annotated, reachable, unique by commit,
+and ordered consistently with commit ancestry.
 
-## Publish automatically
+## Publish from main
 
-The workflow starts on every push to `main`.
-
-1. Merge the prepared pull request into `main` with the intended Conventional Commit-style title.
-2. Open the `CI` workflow for the merge commit and wait for **CI result** to pass.
+1. Merge the prepared pull request into `main` with the intended Conventional
+   Commit title.
+2. Open the `CI` workflow for the merge commit and require `CI result` to pass.
 3. Open the `Release` workflow for the same commit.
-4. Confirm that **Resolve release candidate** reports the expected tag.
-5. Confirm **Generate release notes** and **Scan release notes** pass on their separate runners.
-6. Wait for **Publish GitHub Release** to finish.
+4. Confirm `Resolve release candidate` reports the expected tag and SHA.
+5. Confirm the note generation and scanning jobs pass.
+6. Wait for `Publish GitHub Release` to finish.
 
-The release workflow stops if a newer commit reaches `main` while it is running. It also stops after about 15 minutes if CI for the release commit never completes.
+The workflow requires its commit to be the current `main` tip when its
+serialized run begins. It then binds that exact commit and waits for its CI.
+New commits may reach `main` while publication is in progress; they don't
+change the bound candidate or its immutable tag. A later serialized run
+evaluates those commits from the newly published tag.
 
-## Verify the release
+## Verify the published state
 
-Set the tag and expected merge commit, then inspect the release and the dereferenced annotated tag:
+Set the tag and expected merge commit shown by the completed workflow:
 
 ```bash
-RELEASE_TAG=v0.2.0
+set -euo pipefail
+
+RELEASE_TAG=vMAJOR.MINOR.PATCH
 EXPECTED_SHA=REPLACE_WITH_FULL_RELEASE_COMMIT_SHA
+EXPECTED_AUTHOR=vexcalibur-dev-automation[bot]
+VERIFY_REF="refs/vexcalibur-release/manual/${RELEASE_TAG}"
+WORK_DIR="$(mktemp -d)"
 
-gh release view "${RELEASE_TAG}" \
-  --repo vexcalibur-dev/vexcalibur-action \
-  --json tagName,targetCommitish,isDraft,isPrerelease,url
+cleanup() {
+  git update-ref -d "${VERIFY_REF}" >/dev/null 2>&1 || true
+  rm -rf "${WORK_DIR}"
+}
+trap cleanup EXIT
 
-REMOTE_SHA="$(
-  git ls-remote --tags \
-    https://github.com/vexcalibur-dev/vexcalibur-action.git \
-    "refs/tags/${RELEASE_TAG}^{}" |
-    cut -f1
+git update-ref -d "${VERIFY_REF}"
+git fetch --no-tags origin \
+  "refs/tags/${RELEASE_TAG}:${VERIFY_REF}"
+RELEASE_SHA="$(git rev-parse --verify "${VERIFY_REF}^{commit}")"
+if [[ "${RELEASE_SHA}" != "${EXPECTED_SHA}" ]]; then
+  echo "Release tag targets ${RELEASE_SHA}, expected ${EXPECTED_SHA}." >&2
+  exit 1
+fi
+
+COMPATIBILITY_FILE="${WORK_DIR}/action-compatibility.json"
+RELEASE_JSON="${WORK_DIR}/release.json"
+RELEASE_NOTES="${WORK_DIR}/release-notes.md"
+git cat-file blob "${RELEASE_SHA}:action-compatibility.json" \
+  > "${COMPATIBILITY_FILE}"
+COMPATIBILITY_SHA256="$(
+  python3 -c \
+    'import hashlib,sys; print(hashlib.sha256(open(sys.argv[1], "rb").read()).hexdigest())' \
+    "${COMPATIBILITY_FILE}"
 )"
-test "${REMOTE_SHA}" = "${EXPECTED_SHA}"
+
+gh api \
+  "repos/vexcalibur-dev/vexcalibur-action/releases/tags/${RELEASE_TAG}" \
+  > "${RELEASE_JSON}"
+RELEASE_JSON="${RELEASE_JSON}" RELEASE_NOTES="${RELEASE_NOTES}" python3 - <<'PY'
+import json
+import os
+from pathlib import Path
+
+release = json.loads(Path(os.environ["RELEASE_JSON"]).read_text(encoding="utf-8"))
+body = release.get("body")
+if not isinstance(body, str):
+    raise SystemExit("GitHub Release body is missing")
+Path(os.environ["RELEASE_NOTES"]).write_text(body, encoding="utf-8")
+PY
+NOTES_SHA256="$(
+  python3 -c \
+    'import hashlib,sys; print(hashlib.sha256(open(sys.argv[1], "rb").read()).hexdigest())' \
+    "${RELEASE_NOTES}"
+)"
+NOTES_FORMAT="$(
+  git for-each-ref --format='%(contents)' "${VERIFY_REF}" |
+    awk -F ': ' '$1 == "Release-Notes-Format" {print $2; exit}'
+)"
+
+scripts/release.py verify-tag \
+  --ref "${VERIFY_REF}" \
+  --tag "${RELEASE_TAG}" \
+  --commit "${RELEASE_SHA}" \
+  --compatibility-sha256 "${COMPATIBILITY_SHA256}" \
+  --notes-format "${NOTES_FORMAT}" \
+  --notes-sha256 "${NOTES_SHA256}"
+scripts/release.py verify-release \
+  --release-json "${RELEASE_JSON}" \
+  --notes-file "${RELEASE_NOTES}" \
+  --expected-author "${EXPECTED_AUTHOR}" \
+  --tag "${RELEASE_TAG}" \
+  --commit "${RELEASE_SHA}" \
+  --notes-format "${NOTES_FORMAT}" \
+  --compatibility-sha256 "${COMPATIBILITY_SHA256}"
 ```
 
-Success means the release exists, isn't a draft or prerelease, and the final `test` exits with status `0`. Read the generated notes and confirm that they describe only the intended changes.
+Both commands print `verified` and exit with status `0` on success. This proves
+that the local tag, manifest, notes, and current GitHub Release agree at the
+time of the check. It also checks that GitHub reports the release as immutable
+and that no assets were attached. The EXIT trap removes the private working
+directory and isolated verification ref whether verification succeeds or
+fails.
 
-## Dispatch a manual version
+## Dispatch an explicit tag
 
-Use manual dispatch when the next version must be explicit.
+Use manual dispatch when the next tag must be explicit or a current-format tag
+needs recovery.
 
 1. Open the repository's **Actions** tab and select **Release**.
-2. Choose **Run workflow**.
-3. Keep the branch set to `main`.
-4. Enter `MAJOR.MINOR.PATCH`, such as `0.3.0`.
-5. Run the workflow.
-6. Verify the release with the commands above.
+2. Choose **Run workflow** with the branch set to `main`.
+3. Enter a complete `vMAJOR.MINOR.PATCH` tag.
+4. Run the workflow and verify the result.
 
-The requested version doesn't bypass CI, the compatibility-table check, the stale-commit guard, or the secret scan.
+An explicit new tag cannot understate the Conventional Commit bump. Manual
+dispatch does not bypass CI, graph validation, scanning, or remote-state checks.
 
 ## Recover an incomplete release
 
-If the annotated tag exists on the current `main` commit but the GitHub Release is missing, rerun **Release** manually with that same version. The script returns `bump=existing`; the publish job keeps the existing tag and creates the missing release.
+Before dispatching recovery, fetch the tag and confirm that the planner accepts
+its canonical metadata:
 
-Stop if the tag points to another commit. Don't move it. Investigate the unexpected tag and choose a later version once the repository state is understood.
+```bash
+set -euo pipefail
+
+RELEASE_TAG=vMAJOR.MINOR.PATCH
+WORK_DIR="$(mktemp -d)"
+trap 'rm -rf "${WORK_DIR}"' EXIT
+git clone --quiet \
+  https://github.com/vexcalibur-dev/vexcalibur-action.git \
+  "${WORK_DIR}/repository"
+cd "${WORK_DIR}/repository"
+scripts/release.py plan --tag "${RELEASE_TAG}"
+```
+
+Continue only when the command prints `operation=recover`. The workflow reads
+the immutable tag target after `main` advances. It regenerates the same notes
+from Git, checks their digest against the tag, verifies the manifest and full
+annotation, and creates only the missing GitHub Release.
+
+Recovery requires retained successful `CI` runs for both the current `main`
+commit that supplies the publisher and the tagged commit. They are the same for
+a new release, but usually differ during recovery. Check the tagged commit
+before dispatching:
+
+```bash
+RELEASE_SHA="$(git rev-parse --verify "refs/tags/${RELEASE_TAG}^{commit}")"
+gh run list \
+  --workflow ci.yml \
+  --branch main \
+  --commit "${RELEASE_SHA}" \
+  --limit 1000 \
+  --json conclusion,status,url
+```
+
+At least one listed run must have `status` set to `completed` and `conclusion`
+set to `success`. If GitHub no longer retains that evidence, don't create or
+alter a release for the old tag. Merge a corrective commit, let CI pass, and
+publish a later tag that binds the commit with current CI evidence.
+
+Tags created before `action-compatibility.json` and the canonical annotation
+format cannot be recovered automatically. Keep their existing records as
+historical state. If a legacy GitHub Release is missing or wrong, publish a
+later current-format release instead. Do not add metadata by moving, deleting,
+or recreating an old tag, and don't retrofit its GitHub Release.
+
+Any target, annotation, note, or GitHub Release conflict is terminal for that
+version. Preserve the evidence and investigate privately when needed. Then
+merge a corrective commit, let CI pass, and publish a later tag without
+changing the existing tag. The workflow never repairs a conflict by editing
+published state.
 
 ## Diagnose a failed run
 
 | Failure | Meaning | Recovery |
 | --- | --- | --- |
-| `Refusing to release from a stale main workflow run` or `Refusing to publish a stale release` | A newer commit reached `main`. | Start from the current `main` commit. Let its push trigger a new run, or dispatch the workflow there. |
-| `CI did not pass` | CI for the exact release commit completed unsuccessfully. | Fix the failure in a new pull request. Don't release the failing commit. |
-| `Timed out waiting for CI` | No successful CI result arrived during the wait window. | Inspect the CI run. After it passes, rerun Release for the current `main` commit. |
-| Compatibility-table verification fails | The computed tag and expected package spec don't appear in one table row. | Add the row in a pull request, merge it, and release the new commit. |
-| Locked scanner installation fails | A required wheel or hash doesn't match `requirements-release.txt`. | Don't bypass hash checking. Review and refresh the locks through the documented procedure in a pull request. |
-| Generated or scanned release-note digest fails | The artifact differs from the bytes produced or approved by the preceding runner. | Stop the release. Inspect the workflow run and artifacts; rerun only after the unexpected change is understood. |
-| Release-note secret scan fails | Generated notes contain a secret-like value. | Inspect the notes privately. Rotate any real secret, fix the source text, and rerun only after the notes are safe. |
-| Tag exists on a different commit | The requested version has already been used. | Don't move the tag. Investigate, then choose a higher version. |
-| Tag exists on the current commit but the release is missing | A prior run stopped after tag creation. | Dispatch the same version to reuse the tag and create the release. |
-| App token creation or tag push fails | App installation, repository scope, variable, secret, or contents permission is missing. | Restore the documented app configuration, then rerun for the same current commit. |
+| Stale-main refusal | A newer commit reached `main` before the serialized run began. | Let the newer `main` run calculate the release. |
+| CI did not pass for the tooling or target SHA | The current publisher or exact release candidate failed or has no retained successful CI run. | Correct the current tooling and let CI pass. Don't create or alter a release for an old tag without retained CI evidence. |
+| Compatibility declaration is missing or invalid | The target has no valid release metadata input. | Correct it before a new tag. Leave a legacy tag unchanged and publish a later current-format release. |
+| Tag graph validation fails | A tag is lightweight, unreachable, duplicated, or out of ancestry order. | Stop. Existing tags remain unchanged. |
+| Locked planner or scanner installation fails | A wheel or hash differs from `requirements-release.txt`. | Review and refresh locks through a pull request. |
+| Release-note digest fails | Artifact bytes differ across runner boundaries. | Stop and inspect the workflow artifacts. |
+| Release-note artifact expired | More than one day passed before the failed-job rerun. | Start a new Release workflow run and inspect its plan. Supply an explicit tag only for `operation=recover`; never change the existing tag. |
+| Release-note secret scan fails | Deterministic notes contain a secret-like value from commit history. | Inspect privately and rotate a real secret first. If the commit is already public, follow the authorized sensitive-data removal process. For a reviewed false positive or unsuitable public subject, add a new deterministic note protocol that omits or redacts it; never change a tag that already exists. |
+| Existing tag metadata differs | The protected tag conflicts with the attempted release. | Do not change it. Investigate and use a later version. |
+| Existing GitHub Release differs | Its body, tag name, author, state, title, or assets conflict. | Stop and investigate. The workflow never edits a conflicting release. |
+| Latest-release verification fails | GitHub promoted the wrong release or did not promote the new highest tag. | Stop and inspect `/releases/latest`. Do not edit or recreate a tag. Fix the workflow, then recover the same tag only when its immutable metadata still matches. |
+| App token or tag creation fails | App installation, secret, variable, scope, administration-read permission, or contents-write permission is missing. | Restore the documented App configuration and rerun. |
 
-## Inspect release notes locally
+## Inspect notes before publication
 
-You need an authenticated GitHub CLI session and the development requirements from [Contributing](../../CONTRIBUTING.md). Set the values below; leave `PREVIOUS_TAG` empty only for the first release.
+Render the exact notes locally from the candidate and its previous tag:
 
 ```bash
-RELEASE_TAG=v0.2.0
+RELEASE_TAG=vMAJOR.MINOR.PATCH
 RELEASE_SHA=REPLACE_WITH_FULL_RELEASE_COMMIT_SHA
-PREVIOUS_TAG=v0.1.0
+PREVIOUS_TAG=vPREVIOUS_MAJOR.PREVIOUS_MINOR.PREVIOUS_PATCH
+NOTES_FORMAT="$(
+  scripts/release.py plan |
+    awk -F= '$1 == "notes_format" {print $2; exit}'
+)"
 
-args=(
-  repos/vexcalibur-dev/vexcalibur-action/releases/generate-notes
-  -f "tag_name=${RELEASE_TAG}"
-  -f "target_commitish=${RELEASE_SHA}"
-)
-if [[ -n "${PREVIOUS_TAG}" ]]; then
-  args+=(-f "previous_tag_name=${PREVIOUS_TAG}")
-fi
-
-gh api "${args[@]}" --jq .body > /tmp/vexcalibur-action-release-notes.md
+scripts/release.py render-notes \
+  --tag "${RELEASE_TAG}" \
+  --commit "${RELEASE_SHA}" \
+  --previous-tag "${PREVIOUS_TAG}" \
+  --notes-format "${NOTES_FORMAT}" \
+  --output /tmp/vexcalibur-action-release-notes.md
 detect-secrets-hook \
   --baseline .secrets.baseline \
   -- /tmp/vexcalibur-action-release-notes.md
 ```
 
-No scanner output and exit status `0` mean the notes match the current baseline. A real credential must be rotated and removed at its source, such as a pull request title or commit message. Add a baseline entry only for a reviewed false positive.
-
-If sensitive data reached a published release, rotate it immediately and use the [private security process](../../SECURITY.md). Editing the release text doesn't make an exposed credential safe again.
+No scanner output and exit status `0` mean the notes match the current secret
+baseline. Review the file as well; the scanner cannot decide whether public
+commit text is appropriate release prose. If sensitive data has already been
+published, rotate it and follow the [private security process](../../SECURITY.md).
+Remove `/tmp/vexcalibur-action-release-notes.md` after the review.

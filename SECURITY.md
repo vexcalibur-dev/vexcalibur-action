@@ -18,13 +18,55 @@ Maintainers aim to acknowledge a private report within three business days and s
 
 The following lines currently receive security fixes:
 
-| Version line | Supported | What to do |
+| Release channel | Supported | What to do |
 | --- | --- | --- |
 | `main` | Yes | Use for development and validation. Security fixes land here first. |
-| `v0.2.x` | Yes | Upgrade to the latest `v0.2.x` release and its documented package pair. |
-| `v0.1.x` | No | Upgrade to the latest supported action release. |
-| Older pre-1.0 lines | No | Upgrade to the latest supported action release. |
+| Highest strict semantic release tag | Yes | Pin its exact commit. Read the current-format declaration when present, or use the documented legacy fallback. |
+| Earlier release tags | No | Upgrade to the highest supported action release. |
 
-Pre-1.0 action releases support only the Vexcalibur package versions in the [compatibility table](docs/reference/compatibility.md). When a fix preserves the `v0.2.x` input contract, maintainers publish a new patch release. An incompatible fix gets a new release line and an explicit upgrade path in the release notes and compatibility table.
+Releases created by the current workflow support only the Vexcalibur package
+and Python versions in the `action-compatibility.json` file at the tag's commit.
+These are current-format releases. Tags published before this workflow are
+legacy releases: they do not contain that declaration or canonical recovery
+metadata. The [compatibility reference](docs/reference/compatibility.md) checks
+for the declaration and falls back to the historical compatibility table.
 
-Existing release tags aren't moved. Consumers that need an immutable action reference should pin the full release commit SHA.
+A fix that preserves the input contract receives a patch release. An
+incompatible fix receives a major release, and its breaking commit appears in
+the deterministic notes.
+
+Release tags are never moved, deleted, or reused. Repository rules enforce that
+policy without a bypass, and the publisher checks those rules before creating a
+tag. The protected annotated Git tag is the authority for the version, target,
+compatibility digest, and release-note digest. Mutable aliases are branches.
+Consumers should pin the dereferenced release commit SHA.
+
+GitHub's immutable-release setting protects the associated tag and assets, but
+GitHub still permits title and body edits and release deletion. The workflow
+verifies the GitHub Release projection when it publishes or recovers a release;
+that check is point-in-time. A later verification can detect a body change from
+the note digest stored in the tag.
+
+The publisher advances the mutable `release-coordination` branch in the same
+atomic push that creates a tag. An exact branch lease serializes independent
+publishers before either can create permanent tag state. The branch is not a
+release identity and consumers must not pin it.
+
+Repository administrators and organization owners are part of the release
+governance trust boundary because they can change repository settings. The
+publisher checks the ruleset scope and rule types immediately before
+publication. GitHub omits bypass principals from the read-only App response, so
+an organization owner records the complete principals in
+`RELEASE_POLICY_ATTESTATION`. Publication fails unless the live ruleset IDs and
+revision timestamps match that evidence. Owner-enforced immutable Releases
+protect a tag after publication. This repository currently uses
+repository-owned rulesets, which don't provide independent provenance against
+a compromised administrator before a GitHub Release exists.
+
+The automation App and its private key are the protocol-enforcing trust
+boundary for tag creation. GitHub rules can restrict creation to that App and
+forbid every later tag mutation, but they can't require an annotated object,
+canonical metadata, semantic ordering, or the coordination branch. The
+publisher enforces those checks. A compromised App could still create malformed
+permanent tag state, so revoke its installation and rotate its key during a
+release-credential incident.

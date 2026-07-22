@@ -15,7 +15,9 @@ ACTION = REPO_ROOT / "action.yml"
 SCRIPT = REPO_ROOT / "scripts" / "run-vexcalibur.sh"
 
 
-def run_script(extra_env: dict[str, str], cwd: Path | None = None) -> subprocess.CompletedProcess[str]:
+def run_script(
+    extra_env: dict[str, str], cwd: Path | None = None
+) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [str(SCRIPT)],
         check=False,
@@ -31,7 +33,9 @@ def run_action_vexcalibur_step(
     input_overrides: dict[str, str],
 ) -> subprocess.CompletedProcess[str]:
     action = _load_action()
-    step = next(step for step in action["runs"]["steps"] if step["name"] == "Run Vexcalibur")
+    step = next(
+        step for step in action["runs"]["steps"] if step["name"] == "Run Vexcalibur"
+    )
     inputs = {
         "package-spec": "vexcalibur==0.1.0",
         "allow-development-package-spec": "false",
@@ -50,7 +54,9 @@ def run_action_vexcalibur_step(
     cwd.mkdir(parents=True, exist_ok=True)
     shell_template = step["shell"]
     if "{0}" not in shell_template:
-        raise AssertionError(f"action shell template does not include script placeholder: {shell_template}")
+        raise AssertionError(
+            f"action shell template does not include script placeholder: {shell_template}"
+        )
     step_script = cwd / "vexcalibur-action-step.sh"
     step_script.write_text(f"{step['run']}\n", encoding="utf-8")
     command = shlex.split(shell_template.replace("{0}", shlex.quote(str(step_script))))
@@ -151,7 +157,9 @@ def write_fake_command(tmpdir: Path, command_name: str, calls_file: Path) -> Pat
     return fake_command
 
 
-def write_fake_python(tmpdir: Path, vexcalibur_calls_file: Path, python_calls_file: Path) -> Path:
+def write_fake_python(
+    tmpdir: Path, vexcalibur_calls_file: Path, python_calls_file: Path
+) -> Path:
     fake_python = tmpdir / "python"
     managed_vexcalibur_script = "\n".join(
         [
@@ -197,7 +205,7 @@ def write_fake_python(tmpdir: Path, vexcalibur_calls_file: Path, python_calls_fi
                 "args = raw_args[1:] if raw_args[:1] == ['-I'] else raw_args",
                 "logged_command = ' '.join(raw_args).replace('\\n', '\\\\n')",
                 "with python_calls.open('a', encoding='utf-8') as stream:",
-                "    stream.write(f\"COMMAND={logged_command}\\n\")",
+                '    stream.write(f"COMMAND={logged_command}\\n")',
                 "    stream.write(f\"PYTHONHOME={os.environ.get('PYTHONHOME', '')}\\n\")",
                 "    stream.write(f\"PYTHONNOUSERSITE={os.environ.get('PYTHONNOUSERSITE', '')}\\n\")",
                 "    stream.write(f\"PYTHONPATH={os.environ.get('PYTHONPATH', '')}\\n\")",
@@ -257,9 +265,13 @@ def _load_action() -> dict:
         return yaml.safe_load(stream)
 
 
-def _render_action_value(value: str, env: dict[str, str], inputs: dict[str, str]) -> str:
+def _render_action_value(
+    value: str, env: dict[str, str], inputs: dict[str, str]
+) -> str:
     rendered = value.replace("${{ runner.temp }}", env["RUNNER_TEMP"])
-    rendered = rendered.replace("${{ steps.setup-python.outputs.python-path }}", env["VEXCALIBUR_PYTHON"])
+    rendered = rendered.replace(
+        "${{ steps.setup-python.outputs.python-path }}", env["VEXCALIBUR_PYTHON"]
+    )
     for input_name, input_value in inputs.items():
         rendered = rendered.replace(f"${{{{ inputs.{input_name} }}}}", input_value)
     if "${{" in rendered:

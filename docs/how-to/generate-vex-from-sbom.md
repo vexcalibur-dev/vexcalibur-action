@@ -10,7 +10,8 @@ Your repository needs:
 
 - A CycloneDX JSON or XML SBOM.
 - A local findings document in [Vexcalibur's findings format](https://github.com/vexcalibur-dev/vexcalibur/blob/main/docs/reference/local-findings.md).
-- A tested action and package pair from the [compatibility table](../reference/compatibility.md).
+- A tested action and package pair resolved through the
+  [compatibility reference](../reference/compatibility.md).
 
 The workflow below expects these paths:
 
@@ -21,9 +22,18 @@ security/vexcalibur-findings.json
 
 Local findings must identify components that exist in the SBOM. A finding can use the component's BOM reference or a package URL that appears exactly once.
 
+SBOMs and findings can expose private inventory and vulnerability assessments.
+Don't commit them to a public repository or upload them from a public workflow
+unless that disclosure is approved. Anyone who can read the repository may be
+able to download its workflow artifacts. The example retains its result for one
+day; lower repository-wide retention or skip the upload if your policy requires
+less exposure.
+
 ## Add the workflow
 
-Create `.github/workflows/generate-vex.yml` with this content:
+Replace `REPLACE_WITH_ACTION_SHA` and
+`REPLACE_WITH_VEXCALIBUR_PACKAGE_SPEC` with the values resolved from the same
+release. Then create `.github/workflows/generate-vex.yml` with this content:
 
 ```yaml
 name: Generate VEX
@@ -47,9 +57,9 @@ jobs:
         run: mkdir -p "$RUNNER_TEMP/vexcalibur"
 
       - name: Generate VEX
-        uses: vexcalibur-dev/vexcalibur-action@f05361ec7308e0ff2cf8b961b7ccca2c001b910b # v0.2.1
+        uses: vexcalibur-dev/vexcalibur-action@REPLACE_WITH_ACTION_SHA
         with:
-          package-spec: vexcalibur==0.3.1
+          package-spec: REPLACE_WITH_VEXCALIBUR_PACKAGE_SPEC
           args: |
             generate
             ${{ github.workspace }}/security/sbom.cdx.json
@@ -68,9 +78,12 @@ jobs:
 
           path = Path(os.environ["RUNNER_TEMP"]) / "vexcalibur" / "cyclonedx-vex.json"
           vex = json.loads(path.read_text(encoding="utf-8"))
-          assert vex["bomFormat"] == "CycloneDX", vex
-          assert vex["specVersion"] == "1.6", vex
-          assert isinstance(vex.get("vulnerabilities", []), list), vex
+          if vex.get("bomFormat") != "CycloneDX":
+              raise SystemExit("unexpected CycloneDX bomFormat")
+          if vex.get("specVersion") != "1.6":
+              raise SystemExit("unexpected CycloneDX specVersion")
+          if not isinstance(vex.get("vulnerabilities", []), list):
+              raise SystemExit("CycloneDX vulnerabilities must be a list")
           print(f"validated {path}")
           PY
 
@@ -80,13 +93,17 @@ jobs:
           name: cyclonedx-vex
           path: ${{ runner.temp }}/vexcalibur/cyclonedx-vex.json
           if-no-files-found: error
+          retention-days: 1
 ```
 
 The paths passed to Vexcalibur are absolute because the action runs the command-line interface (CLI) from a private temporary directory. Relative paths don't resolve from the checked-out repository.
 
 ## Run and verify it
 
-Commit the workflow, SBOM, and findings file to the repository's default branch. Open **Actions**, select **Generate VEX**, and choose **Run workflow**.
+Commit the workflow to the repository's default branch. Commit the SBOM and
+findings file only when the repository's visibility and access policy permit
+it. Otherwise, add a step that retrieves them from an approved private source.
+Open **Actions**, select **Generate VEX**, and choose **Run workflow**.
 
 The run is successful when:
 
@@ -154,7 +171,7 @@ Don't copy a fixture timestamp into a current production assertion. Use a timest
 | --- | --- |
 | Vexcalibur reports that an input file doesn't exist | Confirm the repository was checked out and the argument starts with `${{ github.workspace }}`. |
 | Vexcalibur can't write the output | Create the parent directory first and use an absolute `${{ runner.temp }}` path. |
-| The action rejects `package-spec` | Use the exact package from the compatibility table, or opt into a trusted development spec explicitly. |
+| The action rejects `package-spec` | Use the exact package from the release's compatibility declaration, or opt into a trusted development spec explicitly. |
 | `--offline` requires a findings file | Pass both `--offline` and `--findings-file`, each value on its own line. |
 | A local finding doesn't match an SBOM component | Compare its `component_ref` or package URL with the SBOM. Package URLs used for fallback matching must be unique. |
 | Public OSV requires explicit opt-in | Decide whether the inventory can leave the runner. Add `--allow-public-osv` only after approval, or choose a private or local source. |

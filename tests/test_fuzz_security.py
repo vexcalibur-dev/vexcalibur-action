@@ -44,7 +44,9 @@ class FuzzBoundarySecurityTests(unittest.TestCase):
     def test_scheduled_workflow_is_bounded_and_read_only(self) -> None:
         workflow = yaml.safe_load(FUZZ_WORKFLOW.read_text(encoding="utf-8"))
         job = workflow["jobs"]["wrapper-fuzz"]
-        campaign = next(step for step in job["steps"] if step["name"] == "Run bounded campaign")
+        campaign = next(
+            step for step in job["steps"] if step["name"] == "Run bounded campaign"
+        )
         upload = next(
             step
             for step in job["steps"]
@@ -59,7 +61,9 @@ class FuzzBoundarySecurityTests(unittest.TestCase):
         self.assertEqual(job["env"]["FUZZ_RSS_LIMIT_MB"], "2048")
         self.assertIn("runner.temp", campaign["env"]["FUZZ_ARTIFACT_DIR"])
         self.assertIn("runner.temp", campaign["env"]["FUZZ_CORPUS_DIR"])
-        self.assertEqual(upload["if"], "failure() && steps.campaign.outcome == 'failure'")
+        self.assertEqual(
+            upload["if"], "failure() && steps.campaign.outcome == 'failure'"
+        )
         self.assertEqual(upload["with"]["retention-days"], 7)
 
     def test_fuzz_workflow_actions_are_pinned_to_commits(self) -> None:

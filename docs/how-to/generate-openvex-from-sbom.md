@@ -12,7 +12,8 @@ You need:
 - A CycloneDX JSON or XML SBOM.
 - A local findings document in [Vexcalibur's findings format](https://github.com/vexcalibur-dev/vexcalibur/blob/main/docs/reference/local-findings.md).
 - A reviewed document author name.
-- The tested action and package pair from the [compatibility table](../reference/compatibility.md).
+- The tested action and package pair resolved through the
+  [compatibility reference](../reference/compatibility.md).
 
 The workflow below expects these repository paths:
 
@@ -23,9 +24,18 @@ security/vexcalibur-findings.json
 
 Each finding must match one SBOM component. OpenVEX also requires a versioned package URL for every product assertion.
 
+SBOMs, findings, and VEX documents can expose private inventory and
+vulnerability assessments. Don't commit them to a public repository or upload
+them from a public workflow unless that disclosure is approved. Anyone who can
+read the repository may be able to download its workflow artifacts. The example
+retains its result for one day; lower repository-wide retention or skip the
+upload if your policy requires less exposure.
+
 ## Add the workflow
 
-Create `.github/workflows/generate-openvex.yml` with this content:
+Replace `REPLACE_WITH_ACTION_SHA` and
+`REPLACE_WITH_VEXCALIBUR_PACKAGE_SPEC` with the values resolved from the same
+release. Then create `.github/workflows/generate-openvex.yml` with this content:
 
 ```yaml
 name: Generate OpenVEX
@@ -49,9 +59,9 @@ jobs:
         run: mkdir -p "$RUNNER_TEMP/vexcalibur"
 
       - name: Generate OpenVEX
-        uses: vexcalibur-dev/vexcalibur-action@f05361ec7308e0ff2cf8b961b7ccca2c001b910b # v0.2.1
+        uses: vexcalibur-dev/vexcalibur-action@REPLACE_WITH_ACTION_SHA
         with:
-          package-spec: vexcalibur==0.3.1
+          package-spec: REPLACE_WITH_VEXCALIBUR_PACKAGE_SPEC
           args: |
             generate
             ${{ github.workspace }}/security/sbom.cdx.json
@@ -77,11 +87,27 @@ jobs:
           path = Path(os.environ["RUNNER_TEMP"]) / "vexcalibur" / "openvex.json"
           document = json.loads(path.read_text(encoding="utf-8"))
 
-          assert document["@context"] == "https://openvex.dev/ns/v0.2.0", document
-          assert document["author"] == "Example Security Team", document
-          assert document["role"] == "VEX document producer", document
+          def require(condition, message):
+              if not condition:
+                  raise SystemExit(message)
+
+          require(
+              document.get("@context") == "https://openvex.dev/ns/v0.2.0",
+              "unexpected OpenVEX context",
+          )
+          require(
+              document.get("author") == "Example Security Team",
+              "unexpected OpenVEX author",
+          )
+          require(
+              document.get("role") == "VEX document producer",
+              "unexpected OpenVEX author role",
+          )
           statements = document.get("statements")
-          assert isinstance(statements, list) and statements, document
+          require(
+              isinstance(statements, list) and bool(statements),
+              "OpenVEX statements must be a nonempty list",
+          )
 
           allowed_statuses = {
               "affected",
@@ -90,18 +116,38 @@ jobs:
               "under_investigation",
           }
           for statement in statements:
-              assert statement["status"] in allowed_statuses, statement
+              require(
+                  statement.get("status") in allowed_statuses,
+                  "OpenVEX statement has an unsupported status",
+              )
               products = statement.get("products")
-              assert isinstance(products, list) and products, statement
+              require(
+                  isinstance(products, list) and bool(products),
+                  "OpenVEX products must be a nonempty list",
+              )
               for product in products:
-                  assert product["@id"] == product["identifiers"]["purl"], product
+                  require(
+                      product.get("@id")
+                      == product.get("identifiers", {}).get("purl"),
+                      "OpenVEX product ID does not match its package URL",
+                  )
 
               if statement["status"] == "affected":
-                  assert statement.get("action_statement", "").strip(), statement
+                  require(
+                      bool(statement.get("action_statement", "").strip()),
+                      "affected statement has no action statement",
+                  )
               if statement["status"] == "not_affected":
-                  assert statement.get("impact_statement", "").strip(), statement
+                  require(
+                      bool(statement.get("impact_statement", "").strip()),
+                      "not-affected statement has no impact statement",
+                  )
               if statement["status"] == "fixed":
-                  assert "Confirmed fixed product version:" in statement["status_notes"], statement
+                  require(
+                      "Confirmed fixed product version:"
+                      in statement.get("status_notes", ""),
+                      "fixed statement has no confirmed version",
+                  )
 
           print(f"validated {path}")
           PY
@@ -112,6 +158,7 @@ jobs:
           name: openvex
           path: ${{ runner.temp }}/vexcalibur/openvex.json
           if-no-files-found: error
+          retention-days: 1
 ```
 
 Replace `Example Security Team` and the role with values approved by your organization. The author accepts responsibility for the statements in the document.
@@ -134,7 +181,10 @@ Vexcalibur rejects evidence fields on other states. Read the [OpenVEX output con
 
 ## Run and verify it
 
-Commit the workflow, SBOM, and findings file to the repository's default branch. Open **Actions**, select **Generate OpenVEX**, and choose **Run workflow**.
+Commit the workflow to the repository's default branch. Commit the SBOM and
+findings file only when the repository's visibility and access policy permit
+it. Otherwise, add a step that retrieves them from an approved private source.
+Open **Actions**, select **Generate OpenVEX**, and choose **Run workflow**.
 
 The run is successful when:
 
