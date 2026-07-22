@@ -1,2 +1,4 @@
 # Direct dependency used to scan generated release notes.
 detect-secrets==1.5.0
+# Direct dependency used to parse action metadata during release planning.
+pyyaml==6.0.3

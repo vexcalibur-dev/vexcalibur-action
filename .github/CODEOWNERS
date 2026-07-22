@@ -6,6 +6,7 @@
 /.github/actions/ @dannysauer
 /.github/workflows/ @dannysauer
 /action.yml @dannysauer
+/action-compatibility.json @dannysauer
 /scripts/ @dannysauer
 /requirements-dev.in @dannysauer
 /requirements-dev.txt @dannysauer
@@ -14,4 +15,10 @@
 /requirements-release.in @dannysauer
 /requirements-release.txt @dannysauer
 /tests/fuzz/ @dannysauer
+/tests/test_action_compatibility.py @dannysauer
+/tests/test_action_contract.py @dannysauer
+/tests/test_github_release.py @dannysauer
 /tests/test_release_security.py @dannysauer
+/tests/test_release_policy.py @dannysauer
+/tests/test_release_state.py @dannysauer
+/tests/test_release_tags.py @dannysauer

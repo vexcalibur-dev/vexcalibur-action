@@ -1,70 +1,203 @@
 # Action and package compatibility
 
-Vexcalibur Action installs a Vexcalibur Python package at run time. The action ref controls the wrapper. `package-spec` controls the command-line interface (CLI) and Vulnerability Exploitability eXchange (VEX) implementation. Review and pin them separately.
+Vexcalibur Action installs a caller-selected Vexcalibur Python package at run
+time. The wrapper and package are separate trust boundaries, so reviewed
+workflows pin both.
 
-## Tested pairs
+## Source of truth
 
-This table records combinations verified by this repository. The current pair is
-tested on every continuous integration (CI) run; older rows preserve the coverage
-that existed when those versions were current.
+A strict `vMAJOR.MINOR.PATCH` tag identifies an action release. The tag is
+annotated, points to one exact commit, and can never move or be reused.
 
-| Action ref | Vexcalibur package | Python versions | Status |
-| --- | --- | --- | --- |
-| `main` | Wheel built from `vexcalibur-dev/vexcalibur@main`; `vexcalibur==0.3.1` in separate release-package jobs | `3.10`, `3.14` | Mutable development branch |
-| `v0.2.1` | `vexcalibur==0.3.1` | `3.10`, `3.14` | Current supported pair; actively tested with CycloneDX 1.6, OpenVEX 0.2.0, and CSAF 2.0 VEX output |
-| `v0.2.1` | `vexcalibur==0.3.0` | `3.10`, `3.14` | Original release-time pair; previously tested with CycloneDX 1.6, OpenVEX 0.2.0, and CSAF 2.0 VEX output |
-| `v0.2.0` | `vexcalibur==0.3.0` | `3.10`, `3.14` | Previously tested pair; includes CycloneDX 1.6, OpenVEX 0.2.0, and CSAF 2.0 VEX output |
-| `v0.2.0` | `vexcalibur==0.2.0` | `3.10`, `3.14` | Previously tested pair; includes OpenVEX 0.2.0 output |
-| `v0.2.0` | `vexcalibur==0.1.1` | `3.10`, `3.14` | Previously tested pair; CycloneDX output only |
-| `v0.1.0` | `vexcalibur==0.1.1` | `3.10`, `3.14` | Historical release; no longer receives security fixes |
+A current-format tag has canonical annotation metadata, and its commit contains
+`action-compatibility.json`:
 
-The Python column names versions that this repository's continuous integration (CI) exercises. It doesn't claim that every version between them is tested here.
+```text
+protected annotated tag
+  -> exact action commit
+     -> action-compatibility.json
+```
 
-The OpenVEX and CSAF artifact lanes use the default Python 3.14. Help and query lanes exercise Python 3.10 and 3.14.
+The declaration names the Vexcalibur package and Python feature versions that
+release-package CI tested. It does not contain an action version, tag, or SHA.
+The tag supplies that identity at publication time.
 
-The `v0.2.1` action was published while `vexcalibur==0.3.0` was current. The
-action installs the caller-selected package at run time, and its runtime contract
-is unchanged from `v0.2.0`, so the same action release can support a newer tested
-package without moving its tag. Current CI verifies `v0.2.1` with
-`vexcalibur==0.3.1` and separately verifies the mutable action against a wheel
-built from Vexcalibur's `main` branch.
+Tags published before the canonical annotation and compatibility declaration
+are legacy tags. Their commits contain a historical compatibility table instead
+of `action-compatibility.json`. Legacy GitHub Release records may also report
+`immutable: false`; the protected annotated Git tag is still the release
+identity. When the current workflow was introduced, every previously published
+tag fell into this legacy category.
 
-The `v0.2.1` release workflow generates, scans, and publishes release notes on
-three separate runners. The scanner installs only a wheel-only, hash-locked
-dependency closure and receives no publication credential. The publisher verifies
-the scanned artifact's SHA-256 digest before it creates its short-lived
-publication credential.
+This repository keeps no prospective release version. It also keeps no moving
+version tag. If the project ever needs a mutable compatibility alias, that
+alias will be a branch.
 
-All listed checks run on GitHub-hosted `ubuntu-latest`. Other runner operating systems aren't verified. The action assumes `/bin/bash`, POSIX paths, and a writable, executable `RUNNER_TEMP`; see [Runner requirements](action.md#runner-requirements).
+## Find the latest tested pair
 
-Use a release pair for reviewed workflows:
+Run these commands in Bash from any working directory. They need Git, curl,
+Python 3, and awk. They read public repository data, so they don't need a GitHub
+token or an authenticated `gh` session.
+
+```bash
+set -euo pipefail
+
+REPOSITORY=vexcalibur-dev/vexcalibur-action
+REMOTE="https://github.com/${REPOSITORY}.git"
+WORK_DIR="$(mktemp -d)"
+trap 'rm -rf "${WORK_DIR}"' EXIT
+
+ACTION_TAG="$(
+  git ls-remote --refs --tags "${REMOTE}" 'refs/tags/v*' |
+    awk '{sub("refs/tags/", "", $2); print $2}' |
+    python3 -c '
+import re
+import sys
+
+pattern = re.compile(r"^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$")
+tags = []
+for line in sys.stdin:
+    tag = line.strip()
+    match = pattern.fullmatch(tag)
+    if match and all(len(part) <= 6 and int(part) <= 999999 for part in match.groups()):
+        tags.append(tag)
+if not tags:
+    raise SystemExit("no strict semantic release tag found")
+print(max(tags, key=lambda tag: tuple(int(part) for part in tag[1:].split("."))))
+'
+)"
+
+ACTION_SHA="$(
+  git ls-remote --tags "${REMOTE}" "refs/tags/${ACTION_TAG}^{}" |
+    awk 'NR == 1 {print $1}'
+)"
+if [[ ! "${ACTION_SHA}" =~ ^[0-9a-f]{40}$ ]]; then
+  echo "release tag did not resolve to a full commit SHA" >&2
+  exit 1
+fi
+
+COMPATIBILITY_FILE="${WORK_DIR}/action-compatibility.json"
+if curl --fail --silent --location \
+  "https://raw.githubusercontent.com/${REPOSITORY}/${ACTION_SHA}/action-compatibility.json" \
+  > "${COMPATIBILITY_FILE}"; then
+  PACKAGE_SPEC="$(
+    python3 -c '
+import json
+import re
+import sys
+
+def unique_object(pairs):
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"duplicate key: {key}")
+        result[key] = value
+    return result
+
+with open(sys.argv[1], encoding="utf-8") as stream:
+    document = json.load(stream, object_pairs_hook=unique_object)
+
+if set(document) != {"python_versions", "vexcalibur_package"}:
+    raise SystemExit("invalid compatibility declaration fields")
+package = document["vexcalibur_package"]
+package_pattern = re.compile(
+    r"^vexcalibur==(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\."
+    r"(?:0|[1-9][0-9]*)(?:(?:a|b|rc)[0-9]+)?(?:\.post[0-9]+)?"
+    r"(?:\.dev[0-9]+)?(?:\+[0-9A-Za-z]+(?:[._-][0-9A-Za-z]+)*)?$"
+)
+if not isinstance(package, str) or package_pattern.fullmatch(package) is None:
+    raise SystemExit("invalid Vexcalibur package declaration")
+versions = document["python_versions"]
+if (
+    not isinstance(versions, list)
+    or not versions
+    or any(not isinstance(value, str) or re.fullmatch(r"3\.(?:[0-9]|[1-9][0-9])", value) is None for value in versions)
+    or len(versions) != len(set(versions))
+    or versions != sorted(versions, key=lambda value: int(value[2:]))
+):
+    raise SystemExit("invalid Python compatibility declaration")
+print(package)
+' "${COMPATIBILITY_FILE}"
+  )"
+else
+  LEGACY_FILE="${WORK_DIR}/compatibility.md"
+  curl --fail --silent --show-error --location \
+    "https://raw.githubusercontent.com/${REPOSITORY}/${ACTION_SHA}/docs/reference/compatibility.md" \
+    > "${LEGACY_FILE}"
+  PACKAGE_SPEC="$(
+    awk -F '`' -v tag="${ACTION_TAG}" '$2 == tag {print $4; exit}' \
+      "${LEGACY_FILE}"
+  )"
+fi
+
+if ! python3 -c '
+import re
+import sys
+
+pattern = re.compile(
+    r"^vexcalibur==(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\."
+    r"(?:0|[1-9][0-9]*)(?:(?:a|b|rc)[0-9]+)?(?:\.post[0-9]+)?"
+    r"(?:\.dev[0-9]+)?(?:\+[0-9A-Za-z]+(?:[._-][0-9A-Za-z]+)*)?$"
+)
+raise SystemExit(0 if pattern.fullmatch(sys.argv[1]) else 1)
+' "${PACKAGE_SPEC}"; then
+  echo "release metadata did not contain an exact Vexcalibur package" >&2
+  exit 1
+fi
+
+printf 'Action tag: %s\nAction SHA: %s\nPackage: %s\n' \
+  "${ACTION_TAG}" "${ACTION_SHA}" "${PACKAGE_SPEC}"
+```
+
+The output supplies the two values needed by a workflow:
 
 ```yaml
-- uses: vexcalibur-dev/vexcalibur-action@v0.2.1
+- uses: vexcalibur-dev/vexcalibur-action@REPLACE_WITH_ACTION_SHA
   with:
-    package-spec: vexcalibur==0.3.1
+    package-spec: REPLACE_WITH_VEXCALIBUR_PACKAGE_SPEC
     args: --help
 ```
 
-Don't use `main` as a stable release. It can change whenever either repository merges a change.
+Replace both placeholders. The full action commit is the clearest consumer pin.
+The readable release tag is also permanent, but the SHA makes the selected Git
+object visible during review.
+
+The fallback handles legacy tags from before `action-compatibility.json`
+existed. It reads the matching row from the historical reference stored at the
+already resolved commit. Current-format tags must use the JSON declaration.
+
+## Declaration schema
+
+The top-level JSON object contains exactly two fields. Unknown fields fail
+validation.
+
+| Field | Type | Constraint | Meaning |
+| --- | --- | --- | --- |
+| `vexcalibur_package` | String | One exact `vexcalibur==VERSION` requirement with three numeric components and optional PEP 440 pre-release, post-release, development, or local suffixes | Package exercised by released-package CI. |
+| `python_versions` | Array of strings | Nonempty, unique, ascending Python 3 `major.minor` values | Python versions used by the released-package help and local OSV-compatible query matrix. |
+
+The file itself contains no action release identity. Its raw SHA-256 digest is
+stored in both the annotated tag and the GitHub Release notes. The tag also
+stores the release-note protocol and digest so an interrupted release can be
+recovered without changing the tag.
 
 ## Pinning levels
 
-Choose pins that match the workflow's supply-chain policy:
-
-| Boundary | Readable pin | Immutable or repeatable pin |
+| Boundary | Readable pin | Stronger repeatability |
 | --- | --- | --- |
-| Action wrapper | `vexcalibur-dev/vexcalibur-action@v0.2.1` | `vexcalibur-dev/vexcalibur-action@f05361ec7308e0ff2cf8b961b7ccca2c001b910b` (`v0.2.1`) |
-| Vexcalibur package | `vexcalibur==0.3.1` | Same exact spec; verify the package index and hashes according to local policy |
-| Transitive Python packages | Resolver-selected versions | Checked-in, complete pip constraints passed through `constraints-file` |
+| Action wrapper | Protected annotated release tag | Dereferenced release commit SHA |
+| Vexcalibur package | Exact spec from the tag's declaration | The same exact spec with index and artifact hashes checked by local policy |
+| Transitive Python packages | Resolver-selected versions | Complete pip constraints passed through `constraints-file` |
 
-This action's release policy forbids moving an existing version tag. A commit SHA still gives the strongest GitHub Actions pin because the workflow itself names the immutable object.
-
-An exact Vexcalibur version doesn't freeze its dependencies. Without `constraints-file`, pip can select newer compatible transitive releases on a later run. See the [`constraints-file` reference](action.md#constraints-file) for the action contract.
+An exact Vexcalibur package spec does not freeze its dependencies. Without
+`constraints-file`, pip can select newer compatible transitive releases on a
+later run. See the [`constraints-file` reference](action.md#constraints-file).
 
 ## Development package specs
 
-The action accepts only an exact `vexcalibur==...` requirement by default. Git URLs, local wheel paths, source directories, and other specs need an explicit development opt-in:
+The action accepts only an exact `vexcalibur==...` requirement by default. Git
+URLs, local wheels, source directories, and other specs require an explicit
+development opt-in:
 
 ```yaml
 - uses: vexcalibur-dev/vexcalibur-action@main
@@ -74,37 +207,54 @@ The action accepts only an exact `vexcalibur==...` requirement by default. Git U
     args: --help
 ```
 
-Use this form for compatibility testing, not release pinning. Prefer a full Vexcalibur commit SHA over `@main` when a development test must be reproducible.
+Use this form for compatibility development, not for releases. Pin a full
+Vexcalibur commit SHA instead of `@main` when a development test must be
+repeatable.
 
-## What continuous integration verifies
+## CI coverage
 
 The required `CI result` job aggregates these checks:
 
-1. **Repository quality:** Bash syntax, ShellCheck, actionlint, YAML and JSON parsing, secret scanning, and unit tests.
-2. **Development wheel:** a wheel built from `vexcalibur-dev/vexcalibur@main`.
-3. **Action boundary:** `--help` and a local fake Open Source Vulnerabilities (OSV) query with that wheel on Python 3.10 and 3.14.
-4. **CycloneDX artifact:** an XML CycloneDX software bill of materials (SBOM) plus local findings on the default Python 3.14. CI compares the result with the package repository's golden CycloneDX 1.6 fixture.
-5. **Development OpenVEX artifact:** the same local inputs with the development wheel. CI checks the OpenVEX context, author, statuses, products, and status-specific evidence before uploading `openvex-wheel-output`.
-6. **Development CSAF artifact:** the development wheel produces CSAF 2.0 from the same controlled inputs. CI compares the document with the package repository's golden fixture except for the independently checked development-version field. It checks publisher and tracking metadata, all product statuses, versioned product identities, remediations, and impact threats before uploading `csaf-wheel-output`.
-7. **Released package:** `--help` and the local fake OSV query with `vexcalibur==0.3.1` on Python 3.10 and 3.14.
-8. **Released OpenVEX artifact:** `vexcalibur==0.3.1` produces OpenVEX from the controlled local fixtures. CI checks its metadata, statuses, products, and evidence fields. It also confirms that the action inputs, execution steps, and runtime script still match `v0.2.1`, then uploads `openvex-released-package-output`.
-9. **Released CSAF artifact:** `vexcalibur==0.3.1` produces CSAF from the controlled local fixtures. CI checks the generator version against the installed release plus the publisher, tracking, product, status, remediation, and impact contracts before uploading `csaf-released-package-output`.
-10. **Dependency and repository checks:** dependency review on pull requests and OpenSSF Scorecard without PR comments or SARIF upload in the required CI workflow.
+1. Bash syntax, ShellCheck, actionlint, YAML and JSON parsing, secret scanning,
+   unit tests, and the public Action contract guard.
+2. A wheel built from the Vexcalibur repository's `main` branch.
+3. The candidate wrapper's help and local OSV-compatible query paths on each
+   Python version in `action-compatibility.json`.
+4. CycloneDX, OpenVEX, and CSAF generation against controlled local fixtures.
+5. The exact PyPI release named by `action-compatibility.json`. On every
+   declared Python version, CI resolves the wheel under isolated pip settings,
+   rejects it when PyPI marks it as yanked, and verifies its PyPI SHA-256.
+   Released-package E2E jobs install that uploaded wheel instead of resolving
+   the package a second time.
+6. Dependency review on pull requests and OpenSSF Scorecard.
 
-The fake OSV jobs use a loopback server. The artifact jobs use `--offline` with local findings. None of these jobs sends package URLs to the public OSV API.
+The query jobs use a loopback service. Artifact jobs use offline findings. No
+compatibility check sends package URLs or SBOM inventory to the public OSV API.
 
-CI reads the expected released package from `VEXCALIBUR_RELEASE_PACKAGE_VERSION` in `.github/workflows/ci.yml`. It also checks PyPI's latest `vexcalibur` release. A mismatch fails the release-package lane instead of silently testing an unexpected package.
+The contract guard compares `action.yml` with the highest release tag. Adding
+an optional input, an input with a default, or an output requires at least a
+minor Conventional Commit bump. Removing an input or output, changing a default
+or output value, requiring a new caller value, or changing `runs.using` requires
+a major bump. Adding an input deprecation warning requires a minor bump;
+changing or removing one requires a patch. Description-only changes require no
+bump.
 
-The action remains a generic CLI runner. CI adds end-to-end cases for important user workflows; it doesn't duplicate every Vexcalibur CLI test.
+Runner and output coverage remain current CI facts rather than immutable
+manifest claims. See [Action reference](action.md) for the runner contract.
 
-## Release maintenance contract
+## Maintenance contract
 
-Before publishing an action version:
+A compatibility change requires a release even when wrapper behavior stays the
+same. Maintainers update `action-compatibility.json` only with a package and
+Python versions that the same commit's CI will exercise.
 
-1. Set `VEXCALIBUR_RELEASE_PACKAGE_VERSION` to the package version the action release will support.
-2. Add the prospective action tag and exact `vexcalibur==...` spec to this table.
-3. Run the full CI workflow against that commit.
+CI compares the declaration with the highest release tag. The release planner
+repeats that comparison against the tag graph it uses to calculate the next
+version. A tested package change requires a patch, adding a Python version
+requires a minor release, and removing one requires a major release. JSON
+formatting and key order don't affect the comparison.
 
-The release workflow refuses to publish when the computed action tag and expected package spec don't appear together in this file. It waits for CI on the exact release commit, creates an annotated `vX.Y.Z` tag, and publishes a GitHub Release. It doesn't create moving tags such as `v1`.
-
-Maintainers should follow [Release the action](../how-to/release-action.md) for version calculation, permissions, verification, and recovery.
+The release workflow reads that declaration from the target commit. It stores
+the declaration digest in deterministic, scanned release notes and in the
+append-only tag annotation. See [Release the action](../how-to/release-action.md)
+for publication and recovery.

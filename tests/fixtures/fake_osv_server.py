@@ -8,7 +8,9 @@ from typing import Any
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Run a fake OSV-compatible test server.")
+    parser = argparse.ArgumentParser(
+        description="Run a fake OSV-compatible test server."
+    )
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=0)
     parser.add_argument("--port-file", type=Path, required=True)
@@ -49,7 +51,9 @@ def main() -> None:
                 self._write_json(400, {"error": "queries must be a list"})
                 return
 
-            self._write_json(200, {"results": [_result_for_query(query) for query in queries]})
+            self._write_json(
+                200, {"results": [_result_for_query(query) for query in queries]}
+            )
 
         def log_message(self, format: str, *args: object) -> None:
             return

@@ -17,8 +17,7 @@ env:
   VEXCALIBUR_CSAF_WHEEL_ARTIFACT: csaf-wheel-output
   VEXCALIBUR_OPENVEX_RELEASE_ARTIFACT: openvex-released-package-output
   VEXCALIBUR_OPENVEX_WHEEL_ARTIFACT: openvex-wheel-output
-  VEXCALIBUR_RELEASE_ACTION_REF: v0.2.1
-  VEXCALIBUR_RELEASE_PACKAGE_VERSION: "0.3.1"
+  VEXCALIBUR_RELEASE_PACKAGE_ARTIFACT: vexcalibur-release-package
   VEXCALIBUR_WHEEL_ARTIFACT: vexcalibur-wheel
   VEXCALIBUR_SBOM_TO_VEX_ARTIFACT: vexcalibur-sbom-to-vex-output
 
@@ -30,6 +29,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
+          fetch-depth: 0
           persist-credentials: false
 
       - name: Install workflow tools
@@ -56,6 +56,11 @@ jobs:
           bash -n scripts/*.sh
           shellcheck scripts/*.sh
 
+      - name: Validate Python quality
+        run: |
+          ruff format --check scripts tests
+          ruff check scripts tests
+
       - name: Validate GitHub Actions
         run: actionlint
 
@@ -81,6 +86,9 @@ jobs:
                   json.load(stream)
               print(f"JSON OK {path}")
           PY
+
+      - name: Verify public Action contract compatibility
+        run: scripts/check-action-contract.py
 
       - name: Scan pull request for secrets
         if: github.event_name == 'pull_request'
@@ -372,201 +380,225 @@ jobs:
           artifact-name: ${{ env.VEXCALIBUR_CSAF_WHEEL_ARTIFACT }}
 
   resolve-released-package:
-    name: Resolve released package
+    name: Resolve tested package
     runs-on: ubuntu-latest
     needs: [quality]
     outputs:
-      has-release: ${{ steps.release.outputs.has_release }}
-      version: ${{ steps.release.outputs.version }}
-    steps:
-      - name: Set up Python
-        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
-        with:
-          python-version: "3.14.5"
-
-      - name: Find latest released package
-        id: release
-        run: |
-          python - <<'PY' >> "$GITHUB_OUTPUT"
-          from urllib.error import HTTPError
-          from urllib.request import urlopen
-          import json
-          import os
-
-          expected_version = os.environ["VEXCALIBUR_RELEASE_PACKAGE_VERSION"].strip()
-
-          try:
-              with urlopen("https://pypi.org/pypi/vexcalibur/json", timeout=30) as response:
-                  payload = json.load(response)
-          except HTTPError as exc:
-              if exc.code == 404:
-                  if expected_version:
-                      raise SystemExit(
-                          "VEXCALIBUR_RELEASE_PACKAGE_VERSION is set, but PyPI has no vexcalibur project"
-                      )
-                  print("has_release=false")
-                  raise SystemExit(0)
-              raise
-
-          version = payload["info"]["version"]
-          if not expected_version:
-              raise SystemExit(
-                  "PyPI has a vexcalibur release, but VEXCALIBUR_RELEASE_PACKAGE_VERSION is empty"
-              )
-          if version != expected_version:
-              raise SystemExit(
-                  "latest PyPI vexcalibur release does not match "
-                  f"VEXCALIBUR_RELEASE_PACKAGE_VERSION ({version} != {expected_version})"
-              )
-          print("has_release=true")
-          print(f"version={version}")
-          PY
-
-      - name: Report missing release
-        if: steps.release.outputs.has_release != 'true'
-        run: echo "No Vexcalibur PyPI release exists yet; skipping released-package E2E."
-
-  released-package-help:
-    name: Released package E2E help (Python ${{ matrix.python-version }})
-    runs-on: ubuntu-latest
-    needs: [quality, resolve-released-package]
-    if: needs.resolve-released-package.outputs.has-release == 'true'
-    strategy:
-      fail-fast: false
-      matrix:
-        python-version: ["3.10", "3.14"]
+      package-spec: ${{ steps.compatibility.outputs.package_spec }}
+      python-versions: ${{ steps.compatibility.outputs.python_versions }}
+      version: ${{ steps.compatibility.outputs.package_version }}
     steps:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
 
+      - name: Read compatibility declaration
+        id: compatibility
+        run: >-
+          scripts/release.py manifest --ref "${GITHUB_SHA}"
+          >> "${GITHUB_OUTPUT}"
+
+  verify-released-package-artifact:
+    name: Verify released package artifact (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    needs: [quality, resolve-released-package]
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ${{ fromJSON(needs.resolve-released-package.outputs.python-versions) }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Resolve declared package artifact
+        id: artifact
+        env:
+          PACKAGE_SPEC: ${{ needs.resolve-released-package.outputs.package-spec }}
+          PACKAGE_VERSION: ${{ needs.resolve-released-package.outputs.version }}
+          PIP_CONFIG_FILE: /dev/null
+        run: |
+          set -euo pipefail
+
+          pip_report="${RUNNER_TEMP}/vexcalibur-pip-report.json"
+          pypi_release="${RUNNER_TEMP}/vexcalibur-pypi-release.json"
+          python -I -m pip \
+            --isolated \
+            --no-cache-dir \
+            install \
+            --disable-pip-version-check \
+            --dry-run \
+            --ignore-installed \
+            --no-input \
+            --no-deps \
+            --only-binary=:all: \
+            --report "${pip_report}" \
+            -- "${PACKAGE_SPEC}"
+          curl \
+            --fail \
+            --location \
+            --max-time 30 \
+            --proto '=https' \
+            --show-error \
+            --silent \
+            --output "${pypi_release}" \
+            "https://pypi.org/pypi/vexcalibur/${PACKAGE_VERSION}/json"
+          scripts/release.py verify-package-artifact \
+            --pip-report "${pip_report}" \
+            --pypi-release "${pypi_release}" \
+            --package-spec "${PACKAGE_SPEC}" >> "${GITHUB_OUTPUT}"
+
+      - name: Download verified package artifact
+        env:
+          ARTIFACT_FILENAME: ${{ steps.artifact.outputs.artifact_filename }}
+          ARTIFACT_SHA256: ${{ steps.artifact.outputs.artifact_sha256 }}
+          ARTIFACT_URL: ${{ steps.artifact.outputs.artifact_url }}
+        run: |
+          set -euo pipefail
+
+          artifact_dir="${RUNNER_TEMP}/vexcalibur-release-package"
+          artifact_path="${artifact_dir}/${ARTIFACT_FILENAME}"
+          mkdir -p "${artifact_dir}"
+          curl \
+            --fail \
+            --location \
+            --max-time 60 \
+            --proto '=https' \
+            --proto-redir '=https' \
+            --show-error \
+            --silent \
+            --output "${artifact_path}" \
+            "${ARTIFACT_URL}"
+          printf '%s  %s\n' "${ARTIFACT_SHA256}" "${artifact_path}" \
+            | sha256sum --check --strict -
+
+      - name: Upload verified package artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ env.VEXCALIBUR_RELEASE_PACKAGE_ARTIFACT }}-python-${{ matrix.python-version }}
+          path: ${{ runner.temp }}/vexcalibur-release-package/*.whl
+          if-no-files-found: error
+          overwrite: true
+          retention-days: 1
+
+  released-package-help:
+    name: Released package E2E help (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    needs: [quality, resolve-released-package, verify-released-package-artifact]
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ${{ fromJSON(needs.resolve-released-package.outputs.python-versions) }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Resolve verified Vexcalibur wheel
+        id: released-wheel
+        uses: ./.github/actions/resolve-vexcalibur-wheel
+        with:
+          artifact-name: ${{ env.VEXCALIBUR_RELEASE_PACKAGE_ARTIFACT }}-python-${{ matrix.python-version }}
+
       - name: Run latest released package help
         uses: ./
         with:
-          package-spec: vexcalibur==${{ needs.resolve-released-package.outputs.version }}
+          package-spec: ${{ steps.released-wheel.outputs.wheel-path }}
+          allow-development-package-spec: "true"
           python-version: ${{ matrix.python-version }}
           args: --help
 
   released-package-query-osv:
     name: Released package E2E query-osv (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
-    needs: [quality, resolve-released-package]
-    if: needs.resolve-released-package.outputs.has-release == 'true'
+    needs: [quality, resolve-released-package, verify-released-package-artifact]
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.10", "3.14"]
+        python-version: ${{ fromJSON(needs.resolve-released-package.outputs.python-versions) }}
     steps:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
+
+      - name: Resolve verified Vexcalibur wheel
+        id: released-wheel
+        uses: ./.github/actions/resolve-vexcalibur-wheel
+        with:
+          artifact-name: ${{ env.VEXCALIBUR_RELEASE_PACKAGE_ARTIFACT }}-python-${{ matrix.python-version }}
 
       - name: Run latest released package query-osv
         uses: ./.github/actions/query-osv-e2e
         with:
-          package-spec: vexcalibur==${{ needs.resolve-released-package.outputs.version }}
+          package-spec: ${{ steps.released-wheel.outputs.wheel-path }}
+          allow-development-package-spec: "true"
           python-version: ${{ matrix.python-version }}
 
   released-package-openvex:
-    name: Released package E2E OpenVEX
+    name: Released package E2E OpenVEX (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
-    needs: [quality, resolve-released-package]
-    if: needs.resolve-released-package.outputs.has-release == 'true'
+    needs: [quality, resolve-released-package, verify-released-package-artifact]
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ${{ fromJSON(needs.resolve-released-package.outputs.python-versions) }}
     steps:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
 
-      - name: Checkout released action
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: Resolve verified Vexcalibur wheel
+        id: released-wheel
+        uses: ./.github/actions/resolve-vexcalibur-wheel
         with:
-          repository: vexcalibur-dev/vexcalibur-action
-          ref: ${{ env.VEXCALIBUR_RELEASE_ACTION_REF }}
-          path: released-action
-          persist-credentials: false
-
-      - name: Set up Python
-        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
-        with:
-          python-version: "3.14.5"
-
-      - name: Verify released action contract
-        run: |
-          python -m pip install \
-            --only-binary=:all: \
-            --require-hashes \
-            -r requirements-release.txt
-          python - <<'PY'
-          from pathlib import Path
-
-          import yaml
-
-
-          def equal_yaml(left: object, right: object) -> bool:
-              if type(left) is not type(right):
-                  return False
-              if isinstance(left, dict):
-                  return left.keys() == right.keys() and all(
-                      equal_yaml(left[key], right[key]) for key in left
-                  )
-              if isinstance(left, list):
-                  return len(left) == len(right) and all(
-                      equal_yaml(item, other)
-                      for item, other in zip(left, right, strict=True)
-                  )
-              return left == right
-
-
-          def public_contract(path: Path) -> dict[str, object]:
-              document = yaml.safe_load(path.read_text(encoding="utf-8"))
-              inputs = {
-                  name: {
-                      key: value
-                      for key, value in configuration.items()
-                      if key != "description"
-                  }
-                  for name, configuration in document["inputs"].items()
-              }
-              return {
-                  "inputs": inputs,
-                  "outputs": document.get("outputs", {}),
-                  "runs": document["runs"],
-              }
-
-
-          current = public_contract(Path("action.yml"))
-          released = public_contract(Path("released-action/action.yml"))
-          if not equal_yaml(current, released):
-              raise SystemExit("current action contract differs from the released action")
-          PY
-          cmp scripts/run-vexcalibur.sh released-action/scripts/run-vexcalibur.sh
+          artifact-name: ${{ env.VEXCALIBUR_RELEASE_PACKAGE_ARTIFACT }}-python-${{ matrix.python-version }}
 
       - name: Generate and validate OpenVEX
         uses: ./.github/actions/openvex-e2e
         with:
-          package-spec: vexcalibur==${{ needs.resolve-released-package.outputs.version }}
-          artifact-name: ${{ env.VEXCALIBUR_OPENVEX_RELEASE_ARTIFACT }}
+          package-spec: ${{ steps.released-wheel.outputs.wheel-path }}
+          allow-development-package-spec: "true"
+          python-version: ${{ matrix.python-version }}
+          artifact-name: ${{ env.VEXCALIBUR_OPENVEX_RELEASE_ARTIFACT }}-python-${{ matrix.python-version }}
 
   released-package-csaf:
-    name: Released package E2E CSAF
+    name: Released package E2E CSAF (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
-    needs: [quality, resolve-released-package]
-    if: needs.resolve-released-package.outputs.has-release == 'true'
+    needs: [quality, resolve-released-package, verify-released-package-artifact]
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ${{ fromJSON(needs.resolve-released-package.outputs.python-versions) }}
     steps:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
 
+      - name: Resolve verified Vexcalibur wheel
+        id: released-wheel
+        uses: ./.github/actions/resolve-vexcalibur-wheel
+        with:
+          artifact-name: ${{ env.VEXCALIBUR_RELEASE_PACKAGE_ARTIFACT }}-python-${{ matrix.python-version }}
+
       - name: Generate and validate CSAF
         uses: ./.github/actions/csaf-e2e
         with:
-          package-spec: vexcalibur==${{ needs.resolve-released-package.outputs.version }}
+          package-spec: ${{ steps.released-wheel.outputs.wheel-path }}
+          allow-development-package-spec: "true"
+          python-version: ${{ matrix.python-version }}
           expected-generator-version: ${{ needs.resolve-released-package.outputs.version }}
-          artifact-name: ${{ env.VEXCALIBUR_CSAF_RELEASE_ARTIFACT }}
+          artifact-name: ${{ env.VEXCALIBUR_CSAF_RELEASE_ARTIFACT }}-python-${{ matrix.python-version }}
 
   dependency-review:
     name: Dependency Review
@@ -618,6 +650,7 @@ jobs:
       - openvex-wheel-e2e
       - csaf-wheel-e2e
       - resolve-released-package
+      - verify-released-package-artifact
       - released-package-help
       - released-package-query-osv
       - released-package-openvex
@@ -646,16 +679,6 @@ jobs:
             fi
           }
 
-          check_released_package_job() {
-            local name="$1"
-            local result="$2"
-            if [[ "${{ needs.resolve-released-package.outputs.has-release }}" == "true" ]]; then
-              check_required_job "$name" "$result"
-            else
-              check_release_job "$name" "$result"
-            fi
-          }
-
           check_required_job "Quality" "${{ needs.quality.result }}"
           check_required_job "Wrapper fuzz smoke" "${{ needs.wrapper-fuzz-smoke.result }}"
           check_required_job "Build Vexcalibur wheel" "${{ needs.build-vexcalibur-wheel.result }}"
@@ -664,13 +687,14 @@ jobs:
           check_required_job "SBOM-to-VEX action E2E" "${{ needs.sbom-to-vex-e2e.result }}"
           check_required_job "OpenVEX action E2E (development wheel)" "${{ needs.openvex-wheel-e2e.result }}"
           check_required_job "CSAF action E2E (development wheel)" "${{ needs.csaf-wheel-e2e.result }}"
-          check_required_job "Resolve released package" "${{ needs.resolve-released-package.result }}"
+          check_required_job "Resolve tested package" "${{ needs.resolve-released-package.result }}"
+          check_required_job "Verify released package artifact" "${{ needs.verify-released-package-artifact.result }}"
           check_required_job "OpenSSF Scorecard" "${{ needs.scorecard.result }}"
 
-          check_released_package_job "Released package E2E help" "${{ needs.released-package-help.result }}"
-          check_released_package_job "Released package E2E query-osv" "${{ needs.released-package-query-osv.result }}"
-          check_released_package_job "Released package E2E OpenVEX" "${{ needs.released-package-openvex.result }}"
-          check_released_package_job "Released package E2E CSAF" "${{ needs.released-package-csaf.result }}"
+          check_required_job "Released package E2E help" "${{ needs.released-package-help.result }}"
+          check_required_job "Released package E2E query-osv" "${{ needs.released-package-query-osv.result }}"
+          check_required_job "Released package E2E OpenVEX" "${{ needs.released-package-openvex.result }}"
+          check_required_job "Released package E2E CSAF" "${{ needs.released-package-csaf.result }}"
 
           if [[ "${{ github.event_name }}" == "pull_request" ]]; then
             check_required_job "Dependency Review" "${{ needs.dependency-review.result }}"
