@@ -395,7 +395,9 @@ jobs:
 
       - name: Read compatibility declaration
         id: compatibility
-        run: scripts/release.py manifest --ref "${GITHUB_SHA}"
+        run: >-
+          scripts/release.py manifest --ref "${GITHUB_SHA}"
+          >> "${GITHUB_OUTPUT}"
 
   verify-released-package-artifact:
     name: Verify released package artifact (Python ${{ matrix.python-version }})
@@ -451,8 +453,7 @@ jobs:
           scripts/release.py verify-package-artifact \
             --pip-report "${pip_report}" \
             --pypi-release "${pypi_release}" \
-            --package-spec "${PACKAGE_SPEC}" \
-            --github-output "${GITHUB_OUTPUT}"
+            --package-spec "${PACKAGE_SPEC}" >> "${GITHUB_OUTPUT}"
 
       - name: Download verified package artifact
         env:

@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 from pathlib import Path
 
 from release_policy import (
@@ -28,25 +27,22 @@ from release_state import (
     verify_github_release,
     verify_selected_pypi_artifact,
     verify_tag_reference,
-    write_github_outputs,
 )
 
 
-def output_path(argument: Path | None) -> Path | None:
-    if argument is not None:
-        return argument
-    value = os.environ.get("GITHUB_OUTPUT")
-    return Path(value) if value else None
+def emit_github_outputs(outputs: dict[str, str]) -> None:
+    """Print single-line records suitable for a GitHub Actions output file."""
+    for key, value in outputs.items():
+        if "\n" in key or "\n" in value or "\r" in key or "\r" in value:
+            raise ReleaseStateError(
+                f"GitHub Actions output {key!r} must fit on one line"
+            )
+        print(f"{key}={value}")
 
 
 def command_plan(args: argparse.Namespace) -> None:
     plan = plan_release(args.tag)
-    destination = output_path(args.github_output)
-    if destination is None:
-        for key, value in plan.github_outputs().items():
-            print(f"{key}={value}")
-    else:
-        write_github_outputs(destination, plan.github_outputs())
+    emit_github_outputs(plan.github_outputs())
 
 
 def command_manifest(args: argparse.Namespace) -> None:
@@ -54,11 +50,7 @@ def command_manifest(args: argparse.Namespace) -> None:
         manifest = read_manifest_at_commit(args.ref)
     else:
         manifest = read_manifest(args.path)
-    destination = output_path(args.github_output)
-    if destination is None:
-        print(f"valid action compatibility declaration: {args.ref or args.path}")
-    else:
-        write_github_outputs(destination, manifest.github_outputs())
+    emit_github_outputs(manifest.github_outputs())
 
 
 def command_render_notes(args: argparse.Namespace) -> None:
@@ -150,14 +142,7 @@ def command_verify_package_artifact(args: argparse.Namespace) -> None:
         parse_json(args.pypi_release.read_bytes(), source=str(args.pypi_release)),
         package_spec=args.package_spec,
     )
-    destination = output_path(args.github_output)
-    if destination is None:
-        print(
-            "verified non-yanked Vexcalibur artifact "
-            f"{selected.filename} ({selected.sha256})"
-        )
-    else:
-        write_github_outputs(destination, selected.github_outputs())
+    emit_github_outputs(selected.github_outputs())
 
 
 def add_tag_metadata_arguments(parser: argparse.ArgumentParser) -> None:
@@ -176,14 +161,12 @@ def parser() -> argparse.ArgumentParser:
     plan.add_argument(
         "--tag", default="", help="explicit tag or existing tag to recover"
     )
-    plan.add_argument("--github-output", type=Path)
     plan.set_defaults(function=command_plan)
 
     manifest = commands.add_parser("manifest", help="validate compatibility metadata")
     source = manifest.add_mutually_exclusive_group(required=True)
     source.add_argument("--path", type=Path)
     source.add_argument("--ref", help="full release commit to read")
-    manifest.add_argument("--github-output", type=Path)
     manifest.set_defaults(function=command_manifest)
 
     notes = commands.add_parser(
@@ -256,7 +239,6 @@ def parser() -> argparse.ArgumentParser:
     verify_package.add_argument("--pip-report", type=Path, required=True)
     verify_package.add_argument("--pypi-release", type=Path, required=True)
     verify_package.add_argument("--package-spec", required=True)
-    verify_package.add_argument("--github-output", type=Path)
     verify_package.set_defaults(function=command_verify_package_artifact)
 
     return root

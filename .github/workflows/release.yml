@@ -76,7 +76,7 @@ jobs:
         id: release
         env:
           MANUAL_TAG: ${{ github.event.inputs.tag || '' }}
-        run: scripts/release.py plan --tag "${MANUAL_TAG}"
+        run: scripts/release.py plan --tag "${MANUAL_TAG}" >> "${GITHUB_OUTPUT}"
 
       - name: Resolve compatibility metadata
         id: compatibility
@@ -98,8 +98,7 @@ jobs:
           fi
 
           scripts/release.py manifest \
-            --ref "${RELEASE_SHA}" \
-            --github-output "${GITHUB_OUTPUT}"
+            --ref "${RELEASE_SHA}" >> "${GITHUB_OUTPUT}"
 
           echo "Resolved ${RELEASE_TAG} metadata from ${RELEASE_SHA}."
 

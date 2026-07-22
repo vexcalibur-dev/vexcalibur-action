@@ -102,13 +102,13 @@ class ActionCompatibilityTests(unittest.TestCase):
             resolve_job["outputs"]["package-spec"],
             "${{ steps.compatibility.outputs.package_spec }}",
         )
-        self.assertIn(
-            'scripts/release.py manifest --ref "${GITHUB_SHA}"',
+        self.assertEqual(
             next(
                 step["run"]
                 for step in resolve_job["steps"]
                 if step["name"] == "Read compatibility declaration"
             ),
+            'scripts/release.py manifest --ref "${GITHUB_SHA}" >> "${GITHUB_OUTPUT}"',
         )
 
     def test_commit_reader_rejects_a_symlinked_manifest(self) -> None:

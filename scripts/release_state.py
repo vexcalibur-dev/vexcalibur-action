@@ -72,7 +72,6 @@ __all__ = [
     "verify_github_release",
     "verify_selected_pypi_artifact",
     "verify_tag_reference",
-    "write_github_outputs",
 ]
 
 
@@ -436,11 +435,3 @@ def verify_github_release(
             f"GitHub Release {expected_metadata.tag} has conflicting "
             + ", ".join(problems)
         )
-
-
-def write_github_outputs(path: Path, outputs: dict[str, str]) -> None:
-    with path.open("a", encoding="utf-8") as stream:
-        for key, value in outputs.items():
-            if "\n" in key or "\n" in value or "\r" in key or "\r" in value:
-                fail(f"GitHub Actions output {key!r} must fit on one line")
-            stream.write(f"{key}={value}\n")

@@ -69,7 +69,7 @@ class ReleasePlanningTests(GitRepositoryTest):
         self.assertEqual(plan.tag, "v0.4.0")
         self.assertEqual(plan.commit, self.initial_commit)
 
-    def test_cli_writes_complete_github_outputs(self) -> None:
+    def test_cli_emits_complete_github_outputs_to_stdout(self) -> None:
         output_path = self.root / "github-output.txt"
         result = subprocess.run(
             [
@@ -87,10 +87,8 @@ class ReleasePlanningTests(GitRepositoryTest):
         )
 
         self.assertEqual(result.returncode, 0, result.stderr)
-        outputs = dict(
-            line.split("=", 1)
-            for line in output_path.read_text(encoding="utf-8").splitlines()
-        )
+        outputs = dict(line.split("=", 1) for line in result.stdout.splitlines())
+        self.assertFalse(output_path.exists())
         self.assertEqual(outputs["tag"], "v0.4.0")
         self.assertEqual(outputs["sha"], self.initial_commit)
         self.assertNotIn("skip", outputs)
