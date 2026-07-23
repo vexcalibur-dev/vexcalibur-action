@@ -241,6 +241,17 @@ class DependencyLockTests(unittest.TestCase):
             ],
         )
 
+    def test_root_action_pin_has_renovate_version_hint(self) -> None:
+        action = (ROOT / "action.yml").read_text(encoding="utf-8")
+
+        self.assertRegex(
+            action,
+            (
+                r"uses: actions/setup-python@[0-9a-f]{40}"
+                r"  # v[0-9]+\.[0-9]+\.[0-9]+"
+            ),
+        )
+
     def test_clean_runner_release_commands_start_without_site_packages(self) -> None:
         commands = (
             "manifest",
