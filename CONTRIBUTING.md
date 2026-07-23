@@ -135,6 +135,11 @@ fails a required check, it stays unmerged. Inspect the
 generated-command header, run `scripts/refresh-requirements.sh`, and commit
 the resulting complete diff before merging.
 
+Renovate does not update runtime versions in action `with:` inputs. The Python
+runtime is repeated in `.tool-versions`, `mise.toml`, `mise.lock`, workflows,
+and the lock refresh script, so update those files together through
+[Update development tools](#update-development-tools).
+
 Dependabot owns vulnerability-fix pull requests. Before relying on this
 configuration, confirm that the dependency graph, Dependabot alerts, and
 Dependabot security updates are enabled in the repository settings. Renovate

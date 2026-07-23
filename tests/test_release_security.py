@@ -238,6 +238,14 @@ class DependencyLockTests(unittest.TestCase):
                     "matchManagers": ["pip-compile"],
                     "groupName": "Python requirements",
                 },
+                {
+                    "description": (
+                        "Leave coupled runtime versions to manual toolchain updates."
+                    ),
+                    "matchManagers": ["github-actions"],
+                    "matchDepTypes": ["uses-with"],
+                    "enabled": False,
+                },
             ],
         )
 
