@@ -21,16 +21,19 @@ fi
 compile_lock() {
   local input_path="$1"
   local output_path="$2"
+  local published_output_path="$3"
+  local custom_compile_command
+
+  custom_compile_command="uv pip compile --python-version=3.14.5 --universal --constraints=requirements-build-constraints.txt --generate-hashes --output-file=${published_output_path} ${input_path}"
 
   uv pip compile \
     --quiet \
     --python-version 3.14.5 \
     --universal \
-    --only-binary=:all: \
-    --emit-build-options \
+    --constraints=requirements-build-constraints.txt \
     --generate-hashes \
     --upgrade \
-    --custom-compile-command "scripts/refresh-requirements.sh" \
+    --custom-compile-command "${custom_compile_command}" \
     --output-file "${output_path}" \
     "${input_path}"
 }
@@ -38,9 +41,9 @@ compile_lock() {
 temporary_directory="$(mktemp -d "${TMPDIR:-/tmp}/vexcalibur-action-locks.XXXXXX")"
 trap 'rm -rf "${temporary_directory}"' EXIT
 
-compile_lock requirements-release.in "${temporary_directory}/requirements-release.txt"
-compile_lock requirements-dev.in "${temporary_directory}/requirements-dev.txt"
-compile_lock requirements-fuzz.in "${temporary_directory}/requirements-fuzz.txt"
+compile_lock requirements-release.in "${temporary_directory}/requirements-release.txt" requirements-release.txt
+compile_lock requirements-dev.in "${temporary_directory}/requirements-dev.txt" requirements-dev.txt
+compile_lock requirements-fuzz.in "${temporary_directory}/requirements-fuzz.txt" requirements-fuzz.txt
 
 mv "${temporary_directory}/requirements-release.txt" requirements-release.txt
 mv "${temporary_directory}/requirements-dev.txt" requirements-dev.txt

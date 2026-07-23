@@ -61,11 +61,14 @@ the intended upstream revision; do not use `asdf plugin update --all`.
 ## Refresh dependency locks
 
 `requirements-release.in`, `requirements-dev.in`, and
-`requirements-fuzz.in` are the maintainer-edited direct dependencies. Their
-corresponding `.txt` files are generated security boundaries. The smaller
-release lock supplies PyYAML to the planner and detect-secrets to the scanner.
-The development lock adds repository validation tools. The fuzz lock adds
-Atheris and the dependency auditor for CPython 3.14 on Linux x86-64.
+`requirements-fuzz.in` are source-of-truth direct dependencies. Maintainers
+and Renovate edit them.
+`requirements-build-constraints.txt` requires binary distributions during
+resolution. Their corresponding `.txt` files are generated security
+boundaries. The smaller release lock supplies PyYAML to the planner and
+detect-secrets to the scanner. The development lock adds repository validation
+tools. The fuzz lock adds Atheris and the dependency auditor for CPython 3.14
+on Linux x86-64.
 
 You need [uv 0.11.28](https://github.com/astral-sh/uv/releases/tag/0.11.28) and network access to the Python Package Index. The refresh script refuses a different uv version. From the repository root, confirm the version and regenerate all three locks:
 
@@ -78,7 +81,8 @@ The first command must report `uv 0.11.28`. Review the complete diff before acce
 
 - Every direct dependency change in an `.in` file is intentional.
 - Every package in each `.txt` file has an exact version and at least one SHA-256 hash.
-- All three generated files retain `--only-binary :all:`.
+- `requirements-build-constraints.txt` contains only
+  `--only-binary :all:`, and every generated command references it.
 - `requirements-release.txt` contains only the declared planner and scanner
   dependencies and their transitive dependencies.
 - `requirements-dev.txt` contains the same release closure plus the declared development tools.
@@ -116,6 +120,42 @@ python -m venv /tmp/vexcalibur-action-fuzz-lock
 ```
 
 Each install must finish without a hash, source-distribution, or resolver error. Remove the three `/tmp/vexcalibur-action-*-lock` environments after review.
+
+## Review Renovate updates
+
+Renovate updates the compiled Python requirements. Its `pip-compile` manager
+reads the generated command at the top of each lock, changes the matching
+`.in` source, and rebuilds the lock with uv 0.11.28. That command and
+`requirements-build-constraints.txt` are part of the lock contract. Change
+them only with the corresponding tests and a regenerated lock diff.
+
+Renovate groups Python requirements and GitHub Actions updates, but every update
+stays open for review. If Renovate cannot rebuild a lock or the pull request
+fails a required check, it stays unmerged. Inspect the
+generated-command header, run `scripts/refresh-requirements.sh`, and commit
+the resulting complete diff before merging.
+
+Renovate waits five days before it creates a branch for a normal dependency
+update. It requires a registry release timestamp and keeps younger releases out
+of the branch and pull-request queues. Dependabot security fixes are not
+delayed.
+
+Renovate does not update runtime versions in action `with:` inputs. The Python
+runtime is repeated in `.tool-versions`, `mise.toml`, `mise.lock`, workflows,
+and the lock refresh script, so update those files together through
+[Update development tools](#update-development-tools).
+
+Dependabot owns vulnerability-fix pull requests. Before relying on this
+configuration, confirm that the dependency graph, Dependabot alerts, and
+Dependabot security updates are enabled in the repository settings. Renovate
+vulnerability alerts are disabled here to avoid duplicate security updates.
+
+Use a branch named `renovate/reconfigure` for changes to `renovate.json`.
+Push that branch to the repository where Renovate is installed; Renovate does
+not validate branches in forks. Fork-based contributors should ask a maintainer
+to push the branch to the source repository before relying on the
+`renovate/config-validation` check. Merge only after it and the repository's
+required checks pass.
 
 ## Run the local checks
 
