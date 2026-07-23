@@ -207,6 +207,11 @@ class DependencyLockTests(unittest.TestCase):
         self.assertEqual(configuration["timezone"], "America/Chicago")
         self.assertEqual(configuration["schedule"], ["* 8-11 * * 1"])
         self.assertEqual(configuration["prHourlyLimit"], 2)
+        self.assertEqual(configuration["minimumReleaseAge"], "5 days")
+        self.assertEqual(
+            configuration["minimumReleaseAgeBehaviour"], "timestamp-required"
+        )
+        self.assertEqual(configuration["internalChecksFilter"], "strict")
         self.assertEqual(
             configuration["enabledManagers"],
             ["github-actions", "pip-compile"],

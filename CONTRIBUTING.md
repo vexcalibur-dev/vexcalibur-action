@@ -135,6 +135,11 @@ fails a required check, it stays unmerged. Inspect the
 generated-command header, run `scripts/refresh-requirements.sh`, and commit
 the resulting complete diff before merging.
 
+Renovate waits five days before it creates a branch for a normal dependency
+update. It requires a registry release timestamp and keeps younger releases out
+of the branch and pull-request queues. Dependabot security fixes are not
+delayed.
+
 Renovate does not update runtime versions in action `with:` inputs. The Python
 runtime is repeated in `.tool-versions`, `mise.toml`, `mise.lock`, workflows,
 and the lock refresh script, so update those files together through
