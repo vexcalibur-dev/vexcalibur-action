@@ -104,6 +104,16 @@ class ReleaseRulesetTests(unittest.TestCase):
             app_id=APP_ID,
         )
 
+        immutable["updated_at"] = "2026-07-20T19:00:00-05:00"
+        creation["updated_at"] = "2026-07-20T20:00:01-04:00"
+        verify_attested_release_rulesets(
+            immutable,
+            creation,
+            attestation,
+            repository=REPOSITORY,
+            app_id=APP_ID,
+        )
+
         immutable["updated_at"] = "2026-07-21T00:00:02Z"
         with self.assertRaisesRegex(ReleaseStateError, "differs"):
             verify_attested_release_rulesets(
@@ -124,6 +134,83 @@ class ReleaseRulesetTests(unittest.TestCase):
                 repository=REPOSITORY,
                 app_id=APP_ID,
             )
+
+    def test_owner_attestation_requires_timezone_aware_revision(self) -> None:
+        invalid_revisions = (
+            "2026-07-21T00:00:00",
+            "2026-07-21 00:00:00Z",
+            "20260721T000000Z",
+            "2026-W30-2T00:00:00Z",
+            "2026-07-21T24:00:00Z",
+            "2026-07-21T00:00:00.0000009Z",
+            "2026-07-21T00:00:00-00:00",
+            "2026-07-21T00:00:00+00:00:01",
+            "0001-01-01T00:00:00+23:59",
+            "9999-12-31T23:59:59-23:59",
+            "not-a-timestamp",
+        )
+        attestation = create_policy_attestation(
+            self.immutable,
+            self.creation,
+            repository=REPOSITORY,
+            app_id=APP_ID,
+        )
+        live_immutable = deepcopy(self.immutable)
+        del live_immutable["bypass_actors"]
+
+        for revision in invalid_revisions:
+            with self.subTest(revision=revision):
+                immutable = deepcopy(self.immutable)
+                immutable["updated_at"] = revision
+                with self.assertRaisesRegex(ReleaseStateError, "revision timestamp"):
+                    create_policy_attestation(
+                        immutable,
+                        self.creation,
+                        repository=REPOSITORY,
+                        app_id=APP_ID,
+                    )
+
+                invalid_live = deepcopy(live_immutable)
+                invalid_live["updated_at"] = revision
+                with self.assertRaisesRegex(ReleaseStateError, "revision timestamp"):
+                    verify_attested_release_rulesets(
+                        invalid_live,
+                        self.creation,
+                        attestation,
+                        repository=REPOSITORY,
+                        app_id=APP_ID,
+                    )
+
+                invalid_attestation = deepcopy(attestation)
+                invalid_attestation["immutable"]["updated_at"] = revision
+                with self.assertRaisesRegex(ReleaseStateError, "revision timestamp"):
+                    verify_attested_release_rulesets(
+                        live_immutable,
+                        self.creation,
+                        invalid_attestation,
+                        repository=REPOSITORY,
+                        app_id=APP_ID,
+                    )
+
+    def test_owner_attestation_accepts_github_fractional_revisions(self) -> None:
+        immutable = deepcopy(self.immutable)
+        immutable["updated_at"] = "2026-07-21T00:00:00.123Z"
+        attestation = create_policy_attestation(
+            immutable,
+            self.creation,
+            repository=REPOSITORY,
+            app_id=APP_ID,
+        )
+        del immutable["bypass_actors"]
+        immutable["updated_at"] = "2026-07-20T19:00:00.123-05:00"
+
+        verify_attested_release_rulesets(
+            immutable,
+            self.creation,
+            attestation,
+            repository=REPOSITORY,
+            app_id=APP_ID,
+        )
 
     def test_immutable_policy_has_no_mutation_bypass(self) -> None:
         for mutation in ("update", "deletion"):

@@ -58,10 +58,12 @@ publisher checks the ruleset scope and rule types immediately before
 publication. GitHub omits bypass principals from the read-only App response, so
 an organization owner records the complete principals in
 `RELEASE_POLICY_ATTESTATION`. Publication fails unless the live ruleset IDs and
-revision timestamps match that evidence. Owner-enforced immutable Releases
-protect a tag after publication. This repository currently uses
-repository-owned rulesets, which don't provide independent provenance against
-a compromised administrator before a GitHub Release exists.
+revision timestamps match that evidence. Revision timestamps must include a
+timezone; the verifier accepts equivalent representations of the same instant.
+Owner-enforced immutable Releases protect a tag after publication. This
+repository currently uses repository-owned rulesets, which don't provide
+independent provenance against a compromised administrator before a GitHub
+Release exists.
 
 The automation App and its private key are the protocol-enforcing trust
 boundary for tag creation. GitHub rules can restrict creation to that App and

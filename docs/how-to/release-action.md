@@ -140,7 +140,9 @@ scripts/release.py verify-attested-rulesets \
 The final command prints `verified live release rules against the owner policy
 attestation`. Run this preflight again after any change to either ruleset. A
 runtime response that omits bypass principals is accepted only while its live
-ruleset IDs and revision timestamps match this owner-reviewed evidence.
+ruleset IDs and revision timestamps match this owner-reviewed evidence. GitHub
+may serialize the same revision instant with `Z` or an equivalent numeric
+offset; the verifier compares the represented instants.
 
 ## Publication sequence
 

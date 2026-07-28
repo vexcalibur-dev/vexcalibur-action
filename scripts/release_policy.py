@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
+import re
 from typing import Any
 
 from release_common import fail
@@ -19,6 +21,49 @@ ATTESTATION_KEYS = frozenset(
 EVIDENCE_KEYS = frozenset(
     {"id", "name", "source_type", "source", "updated_at", "bypass_actors"}
 )
+RULESET_REVISION_PATTERN = re.compile(
+    r"(?P<year>[0-9]{4})-(?P<month>[0-9]{2})-(?P<day>[0-9]{2})"
+    r"T(?P<hour>[0-9]{2}):(?P<minute>[0-9]{2}):(?P<second>[0-9]{2})"
+    r"(?:\.(?P<fraction>[0-9]{1,6}))?"
+    r"(?P<zone>Z|[+-][0-9]{2}:[0-9]{2})"
+)
+
+
+def ruleset_revision(value: Any, *, label: str) -> datetime:
+    """Parse one GitHub ruleset revision timestamp."""
+    match = (
+        RULESET_REVISION_PATTERN.fullmatch(value) if isinstance(value, str) else None
+    )
+    if match is None:
+        fail(f"{label} ruleset has an invalid revision timestamp")
+
+    zone = match.group("zone")
+    if zone == "Z":
+        offset = timedelta()
+    else:
+        offset_hours = int(zone[1:3])
+        offset_minutes = int(zone[4:6])
+        if offset_hours > 23 or offset_minutes > 59 or zone == "-00:00":
+            fail(f"{label} ruleset has an invalid revision timestamp")
+        offset = timedelta(hours=offset_hours, minutes=offset_minutes)
+        if zone.startswith("-"):
+            offset = -offset
+
+    fraction = (match.group("fraction") or "").ljust(6, "0")
+    try:
+        revision = datetime(
+            year=int(match.group("year")),
+            month=int(match.group("month")),
+            day=int(match.group("day")),
+            hour=int(match.group("hour")),
+            minute=int(match.group("minute")),
+            second=int(match.group("second")),
+            microsecond=int(fraction or "0"),
+            tzinfo=timezone(offset),
+        )
+        return revision.astimezone(timezone.utc)
+    except (OverflowError, ValueError):
+        fail(f"{label} ruleset has an invalid revision timestamp")
 
 
 def read_ruleset(path: Path) -> dict[str, Any]:
@@ -98,11 +143,10 @@ def ruleset_evidence(
         or ruleset.get("name") != expected_name
         or ruleset.get("source_type") != "Repository"
         or ruleset.get("source") != repository
-        or not isinstance(ruleset.get("updated_at"), str)
-        or not ruleset["updated_at"]
         or "bypass_actors" not in ruleset
     ):
         fail(f"ruleset {expected_name!r} has invalid repository identity evidence")
+    ruleset_revision(ruleset.get("updated_at"), label=expected_name)
     return {
         "id": ruleset["id"],
         "name": ruleset["name"],
@@ -176,9 +220,14 @@ def verify_attested_release_rulesets(
             repository=repository,
             expected_name=expected_name,
         )
-        for field in EVIDENCE_KEYS - {"bypass_actors"}:
+        for field in EVIDENCE_KEYS - {"bypass_actors", "updated_at"}:
             if live_identity[field] != evidence[field]:
                 fail(f"live {label} ruleset differs from the owner attestation")
+        if ruleset_revision(
+            live_identity["updated_at"],
+            label=expected_name,
+        ) != ruleset_revision(evidence["updated_at"], label=expected_name):
+            fail(f"live {label} ruleset differs from the owner attestation")
         complete = deepcopy(live)
         complete["bypass_actors"] = evidence["bypass_actors"]
         complete_rulesets.append(complete)
