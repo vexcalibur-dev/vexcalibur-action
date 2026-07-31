@@ -1,0 +1,15 @@
+{
+  "artifact_filename": "vexcalibur-0.5.0-py3-none-any.whl",
+  "artifact_sha256_parts": [
+    "c7e45c91",
+    "c0fd813e",
+    "fc255927",
+    "de37c47c",
+    "e2a068cb",
+    "4e34ebc1",
+    "d67426ed",
+    "0358a5f0"
+  ],
+  "package_spec": "vexcalibur==0.5.0",
+  "python_version": "3.14"
+}

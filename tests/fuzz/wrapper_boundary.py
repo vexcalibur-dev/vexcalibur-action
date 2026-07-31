@@ -45,6 +45,7 @@ class WrapperCase:
     constraints_kind: int
     args_present: bool
     raw_args: str
+    report_kind: int = 0
 
 
 def decode_case(data: bytes) -> WrapperCase:
@@ -87,6 +88,7 @@ def decode_case(data: bytes) -> WrapperCase:
         constraints_kind=(flags >> 2) & 0x03,
         args_present=bool(flags & 0x01),
         raw_args=_environment_text(args_bytes),
+        report_kind=((flags >> 5) & 0x01) | ((flags >> 6) & 0x02),
     )
 
 
@@ -96,6 +98,8 @@ def encode_seed(case: WrapperCase) -> bytes:
         int(case.args_present)
         | (int(case.allow_development_package_spec) << 1)
         | ((case.constraints_kind & 0x03) << 2)
+        | ((case.report_kind & 0x01) << 5)
+        | ((case.report_kind & 0x02) << 6)
     )
     return (
         SEED_MAGIC
@@ -119,13 +123,27 @@ def expected_cli_args(case: WrapperCase) -> list[str]:
     return args
 
 
-def expected_success(case: WrapperCase) -> bool:
+def _passes_initial_validation(case: WrapperCase) -> bool:
     package_is_allowed = bool(case.package_spec) and (
         case.allow_development_package_spec
         or RELEASE_SPEC.fullmatch(case.package_spec) is not None
     )
     constraints_are_allowed = case.constraints_kind in (0, 1)
     return package_is_allowed and constraints_are_allowed
+
+
+def expected_success(case: WrapperCase) -> bool:
+    if not _passes_initial_validation(case):
+        return False
+    arguments = expected_cli_args(case)
+    command_index = _generate_command_index(arguments)
+    if case.report_kind == 0 or command_index is None:
+        return True
+    if _has_reserved_report_argument(arguments, command_index):
+        return False
+    if _has_help_token(arguments, command_index):
+        return True
+    return case.report_kind == 1
 
 
 def expected_validation_error(case: WrapperCase) -> str | None:
@@ -141,6 +159,30 @@ def expected_validation_error(case: WrapperCase) -> str | None:
     if case.constraints_kind == 2:
         return "constraints-file does not exist or is not readable"
     return None
+
+
+def _generate_command_index(arguments: list[str]) -> int | None:
+    if arguments[:1] == ["generate"]:
+        return 0
+    if arguments[:2] == ["--", "generate"]:
+        return 1
+    return None
+
+
+def _has_help_token(arguments: list[str], command_index: int) -> bool:
+    for argument in arguments[command_index + 1 :]:
+        if argument == "--":
+            return False
+        if argument == "--help":
+            return True
+    return False
+
+
+def _has_reserved_report_argument(arguments: list[str], command_index: int) -> bool:
+    return any(
+        argument == "--execution-report" or argument.startswith("--execution-report=")
+        for argument in arguments[command_index + 1 :]
+    )
 
 
 def exercise_fuzz_input(data: bytes) -> None:
@@ -167,6 +209,7 @@ def _exercise_case(case: WrapperCase, root: Path) -> None:
     hostile_bin = root / "hostile bin [literal]"
     python_log = root / "python-events.jsonl"
     cli_log = root / "cli-events.jsonl"
+    github_output = root / "github-output"
     hostile_marker = root / "hostile-command-ran"
     bash_env_marker = root / "bash-env-sourced"
     constraints_file = root / "constraints with spaces;literal.txt"
@@ -191,6 +234,7 @@ def _exercise_case(case: WrapperCase, root: Path) -> None:
     environment = {
         "BASH_ENV": str(bash_env),
         "ENV": str(bash_env),
+        "GITHUB_ACTION_PATH": str(REPO_ROOT),
         "HOME": str(root / "home"),
         "LANG": "C.UTF-8",
         "PATH": str(hostile_bin),
@@ -220,8 +264,12 @@ def _exercise_case(case: WrapperCase, root: Path) -> None:
         "VEXCALIBUR_CONSTRAINTS_FILE": constraints_value,
         "VEXCALIBUR_PACKAGE_SPEC": case.package_spec,
         "VEXCALIBUR_PYTHON": str(trusted_python),
+        "VEXCALIBUR_FUZZ_REPORT_KIND": str(case.report_kind),
         "VEXCALIBUR_SKIP_INSTALL": "true",
     }
+    if case.report_kind:
+        github_output.touch()
+        environment["GITHUB_OUTPUT"] = str(github_output)
     if case.args_present:
         environment["VEXCALIBUR_ARGS"] = case.raw_args
 
@@ -238,7 +286,7 @@ def _exercise_case(case: WrapperCase, root: Path) -> None:
     _require(not hostile_marker.exists(), "a caller-controlled executable ran")
     _require(not bash_env_marker.exists(), "BASH_ENV or ENV was sourced")
 
-    if not expected_success(case):
+    if not _passes_initial_validation(case):
         _require(completed.returncode == 2, _result_message(case, completed))
         expected_error = expected_validation_error(case)
         _require(expected_error is not None, f"missing failure model for {case!r}")
@@ -249,13 +297,75 @@ def _exercise_case(case: WrapperCase, root: Path) -> None:
         _require(not cli_log.exists(), "validation failure reached the CLI boundary")
         return
 
-    _require(completed.returncode == 0, _result_message(case, completed))
-    python_events = _read_json_lines(python_log)
-    cli_events = _read_json_lines(cli_log)
-    _require(len(python_events) == 3, f"unexpected Python calls: {python_events!r}")
-    _require(len(cli_events) == 1, f"unexpected CLI calls: {cli_events!r}")
+    expected_arguments = expected_cli_args(case)
+    command_index = _generate_command_index(expected_arguments)
+    probes_execution_report = command_index is not None
+    supports_execution_report = case.report_kind != 0
+    rejects_reserved_report = (
+        supports_execution_report
+        and command_index is not None
+        and _has_reserved_report_argument(expected_arguments, command_index)
+    )
+    manages_execution_report = (
+        supports_execution_report
+        and command_index is not None
+        and not rejects_reserved_report
+        and not _has_help_token(expected_arguments, command_index)
+    )
 
-    setup_event, venv_event, pip_event = python_events
+    if rejects_reserved_report:
+        _require(completed.returncode == 2, _result_message(case, completed))
+        _require(
+            "must not set the action-managed --execution-report option"
+            in completed.stderr,
+            _result_message(case, completed),
+        )
+    elif manages_execution_report and case.report_kind in {2, 3}:
+        _require(completed.returncode == 2, _result_message(case, completed))
+        _require(
+            "execution report error:" in completed.stderr,
+            _result_message(case, completed),
+        )
+    else:
+        _require(completed.returncode == 0, _result_message(case, completed))
+
+    python_events = _read_json_lines(python_log)
+    cli_events = _read_json_lines(cli_log) if cli_log.exists() else []
+    expected_python_calls = 3 + int(probes_execution_report)
+    if manages_execution_report:
+        expected_python_calls += 2
+    _require(
+        len(python_events) == expected_python_calls,
+        f"unexpected Python calls: {python_events!r}",
+    )
+    if rejects_reserved_report:
+        _require(
+            not cli_events, f"reserved report argument reached CLI: {cli_events!r}"
+        )
+    elif manages_execution_report:
+        _require(len(cli_events) == 1, f"unexpected CLI events: {cli_events!r}")
+        actual_arguments = cli_events[0]["argv"]
+        prefix_length = command_index + 1
+        _require(
+            actual_arguments[:prefix_length] == expected_arguments[:prefix_length]
+            and actual_arguments[prefix_length] == "--execution-report"
+            and actual_arguments[prefix_length + 2 :]
+            == expected_arguments[prefix_length:],
+            f"unexpected managed CLI argv: {actual_arguments!r}",
+        )
+        report_path = Path(actual_arguments[prefix_length + 1])
+        _require(
+            report_path.name == "execution-report.json"
+            and report_path.parent.name.startswith("report."),
+            f"unexpected managed report path: {report_path}",
+        )
+    else:
+        _require(
+            [event["argv"] for event in cli_events] == [expected_arguments],
+            f"unexpected CLI argv: {cli_events!r}",
+        )
+
+    setup_event, venv_event, pip_event = python_events[:3]
     setup_argv = setup_event["argv"]
     _require(
         len(setup_argv) == 4
@@ -297,14 +407,11 @@ def _exercise_case(case: WrapperCase, root: Path) -> None:
         Path(pip_event["cwd"]) == action_work_dir,
         f"pip ran outside action work dir: {pip_event!r}",
     )
-    _require(
-        cli_events[0]["argv"] == expected_cli_args(case),
-        f"unexpected CLI argv: {cli_events!r}",
-    )
-    _require(
-        Path(cli_events[0]["cwd"]) == action_work_dir,
-        f"CLI ran outside action work dir: {cli_events!r}",
-    )
+    for event in cli_events:
+        _require(
+            Path(event["cwd"]) == action_work_dir,
+            f"CLI ran outside action work dir: {cli_events!r}",
+        )
 
     for event in (setup_event, venv_event):
         _require(
@@ -323,9 +430,77 @@ def _exercise_case(case: WrapperCase, root: Path) -> None:
             f"unexpected pip environment for {name}: {pip_event!r}",
         )
 
+    if probes_execution_report:
+        probe_event = python_events[3]
+        _require(
+            probe_event["argv"]
+            == [
+                "-I",
+                str(REPO_ROOT / "scripts" / "check-execution-report-support.py"),
+            ],
+            f"unexpected execution-report probe: {probe_event!r}",
+        )
+        _require(
+            Path(probe_event["cwd"]) == action_work_dir,
+            f"execution-report probe ran outside action work dir: {probe_event!r}",
+        )
+        for name in PYTHON_TOOL_ENV:
+            _require(
+                probe_event["environment"].get(name) is None,
+                f"unexpected probe environment for {name}: {probe_event!r}",
+            )
+
+    if manages_execution_report:
+        report_path_event = python_events[4]
+        publisher_event = python_events[5]
+        _require(
+            report_path_event["argv"][:2] == ["-I", "-c"],
+            f"unexpected report-path command: {report_path_event!r}",
+        )
+        _require(
+            publisher_event["argv"]
+            == [
+                "-I",
+                str(REPO_ROOT / "scripts" / "publish-execution-report.py"),
+                "--github-output",
+                str(github_output),
+                "--report",
+                str(report_path),
+            ],
+            f"unexpected report publisher: {publisher_event!r}",
+        )
+
+    if case.report_kind:
+        output_text = github_output.read_text(encoding="utf-8")
+        if manages_execution_report and case.report_kind == 1:
+            _require(
+                "execution-report<<" in output_text, "valid report was not published"
+            )
+        else:
+            _require(not output_text, f"unexpected GitHub outputs: {output_text!r}")
+
 
 def _write_fake_python(directory: Path, python_log: Path, cli_log: Path) -> Path:
     fake_python = directory / "python"
+    valid_report = (
+        json.dumps(
+            {
+                "analysis_state_counts": {"resolved": 1},
+                "command": "generate",
+                "component_count": 1,
+                "document": {"bytes": 1, "sha256": "a" * 64},
+                "finding_count": 1,
+                "finding_source": "local_file",
+                "inventory_source": "sbom_file",
+                "output_format": "cyclonedx",
+                "schema_version": 1,
+                "vexcalibur_version": "0.0.0",
+            },
+            separators=(",", ":"),
+            sort_keys=True,
+        )
+        + "\n"
+    )
     cli_program = "\n".join(
         (
             f"#!{sys.executable}",
@@ -334,6 +509,15 @@ def _write_fake_python(directory: Path, python_log: Path, cli_log: Path) -> Path
             "from pathlib import Path",
             "import sys",
             f"log_path = Path({str(cli_log)!r})",
+            "report_kind = int(os.environ.get('VEXCALIBUR_FUZZ_REPORT_KIND', '0'))",
+            "if '--execution-report' in sys.argv[1:]:",
+            "    report_index = sys.argv.index('--execution-report') + 1",
+            "    report_path = Path(sys.argv[report_index])",
+            f"    valid_report = {valid_report!r}",
+            "    if report_kind == 1:",
+            "        report_path.write_text(valid_report, encoding='utf-8')",
+            "    elif report_kind == 3:",
+            "        report_path.write_text('{\"schema_version\":1}\\n', encoding='utf-8')",
             "with log_path.open('a', encoding='utf-8') as stream:",
             "    json.dump({'argv': sys.argv[1:], 'cwd': os.getcwd()}, stream, ensure_ascii=False)",
             "    stream.write('\\n')",
@@ -363,6 +547,11 @@ def _write_fake_python(directory: Path, python_log: Path, cli_log: Path) -> Path
                 "    stream.write('\\n')",
                 "raw_args = sys.argv[1:]",
                 "args = raw_args[1:] if raw_args[:1] == ['-I'] else raw_args",
+                "if args[:1] and args[0].endswith('/check-execution-report-support.py'):",
+                "    report_kind = int(os.environ.get('VEXCALIBUR_FUZZ_REPORT_KIND', '0'))",
+                "    raise SystemExit(0 if report_kind else 1)",
+                "if args[:1] and args[0].endswith('/publish-execution-report.py'):",
+                "    os.execv(sys.executable, [sys.executable, *raw_args])",
                 "if args[:1] == ['-c']:",
                 "    os.execv(sys.executable, [sys.executable, *raw_args])",
                 "if args[:2] == ['-m', 'venv']:",

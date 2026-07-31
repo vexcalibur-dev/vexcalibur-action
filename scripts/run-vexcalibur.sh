@@ -11,16 +11,21 @@ else
 fi
 runner_temp="${RUNNER_TEMP:-}"
 python_bin="${VEXCALIBUR_PYTHON:-}"
+github_output="${GITHUB_OUTPUT:-}"
 cli_args=()
+generate_command_index=-1
 action_work_dir=""
+execution_report_path=""
 pip_cache_dir=""
 venv_dir=""
 venv_python=""
 vexcalibur_bin=""
 
 export -n package_spec allow_development_package_spec constraints_file raw_cli_args
-export -n runner_temp python_bin action_work_dir pip_cache_dir venv_dir venv_python vexcalibur_bin
+export -n runner_temp python_bin github_output action_work_dir execution_report_path
+export -n pip_cache_dir venv_dir venv_python vexcalibur_bin generate_command_index
 unset VEXCALIBUR_ARGS VEXCALIBUR_PURLS args purls
+unset GITHUB_OUTPUT
 
 is_true() {
   [[ "$1" == "true" ]]
@@ -124,6 +129,84 @@ resolve_vexcalibur_bin() {
   exit 127
 }
 
+create_execution_report_path() {
+  "$python_bin" -I -c '
+from pathlib import Path
+import sys
+import tempfile
+
+report_dir = Path(tempfile.mkdtemp(prefix="report.", dir=sys.argv[1]))
+print(report_dir / "execution-report.json")
+' "$action_work_dir"
+}
+
+supports_execution_report() {
+  if [[ "${cli_args[0]:-}" == "generate" ]]; then
+    generate_command_index=0
+  elif [[ "${cli_args[0]:-}" == "--" && "${cli_args[1]:-}" == "generate" ]]; then
+    generate_command_index=1
+  else
+    return 1
+  fi
+
+  local probe_status=0
+  "$venv_python" -I \
+    "$GITHUB_ACTION_PATH/scripts/check-execution-report-support.py" ||
+    probe_status=$?
+  if [[ "$probe_status" -eq 0 ]]; then
+    validate_managed_report_args
+    if has_help_token; then
+      return 1
+    fi
+    return 0
+  fi
+  if [[ "$probe_status" -eq 1 ]]; then
+    return 1
+  fi
+  exit "$probe_status"
+}
+
+validate_managed_report_args() {
+  local argument
+  for argument in "${cli_args[@]:$((generate_command_index + 1))}"; do
+    if [[ "$argument" == "--execution-report" || "$argument" == --execution-report=* ]]; then
+      printf '%s\n' 'VEXCALIBUR_ARGS must not set the action-managed --execution-report option' >&2
+      exit 2
+    fi
+  done
+}
+
+has_help_token() {
+  local argument
+  for argument in "${cli_args[@]:$((generate_command_index + 1))}"; do
+    case "$argument" in
+      --)
+        return 1
+        ;;
+      --help)
+        return 0
+        ;;
+    esac
+  done
+  return 1
+}
+
+publish_execution_report() {
+  local publisher_args=(
+    --report
+    "$execution_report_path"
+  )
+  if [[ -n "$github_output" ]]; then
+    publisher_args=(
+      --github-output
+      "$github_output"
+      "${publisher_args[@]}"
+    )
+  fi
+  "$python_bin" -I "$GITHUB_ACTION_PATH/scripts/publish-execution-report.py" \
+    "${publisher_args[@]}"
+}
+
 validate_package_spec
 validate_constraints_file
 read_cli_args
@@ -141,4 +224,17 @@ pip_install_args+=("$package_spec")
 PIP_CONFIG_FILE=/dev/null PIP_CACHE_DIR="$pip_cache_dir" "$venv_python" -I -m pip "${pip_install_args[@]}"
 
 vexcalibur_bin="$(resolve_vexcalibur_bin)"
-"$vexcalibur_bin" "${cli_args[@]}"
+if supports_execution_report; then
+  execution_report_path="$(create_execution_report_path)"
+  command_prefix_length=$((generate_command_index + 1))
+  managed_cli_args=(
+    "${cli_args[@]:0:command_prefix_length}"
+    "--execution-report"
+    "$execution_report_path"
+    "${cli_args[@]:command_prefix_length}"
+  )
+  "$vexcalibur_bin" "${managed_cli_args[@]}"
+  publish_execution_report
+else
+  "$vexcalibur_bin" "${cli_args[@]}"
+fi

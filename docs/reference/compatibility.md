@@ -193,6 +193,34 @@ An exact Vexcalibur package spec does not freeze its dependencies. Without
 `constraints-file`, pip can select newer compatible transitive releases on a
 later run. See the [`constraints-file` reference](action.md#constraints-file).
 
+## Execution-report outputs
+
+The Action detects execution-report support from the installed package rather
+than from a package version or human-readable CLI help. Before every
+`generate` invocation, including help, it imports
+`EXECUTION_REPORT_SCHEMA_VERSION` from `vexcalibur.api`. The exact integer `1`
+allows a non-help command to request a private report and publish its validated
+fields as outputs.
+
+An older package without the module or marker still receives the caller's
+original arguments. Its report outputs remain empty. A marker with a mistyped
+or different value fails because it advertises a contract the Action cannot
+safely consume. Non-`generate` commands also leave the outputs empty. This
+behavior keeps an existing exact `package-spec` usable after the Action is
+upgraded, while the compatibility declaration shows which package the Action
+release actually tested.
+
+The wrapper treats a literal `--help` before the `--` option terminator as a
+help request. It preserves the original arguments and leaves report outputs
+empty without trying to model the installed package's option grammar. Use an
+unambiguous value such as `./--help` or an absolute path when an option value
+must name a file called `--help`. Marker inspection still happens first, so a
+broken or unsupported marker stops a help invocation before the CLI runs.
+
+Use the tested pair from the release when a workflow depends on report outputs.
+The [Action output reference](action.md#outputs) defines their fields and
+failure behavior.
+
 ## Development package specs
 
 The action accepts only an exact `vexcalibur==...` requirement by default. Git
@@ -221,12 +249,19 @@ The required `CI result` job aggregates these checks:
 3. The candidate wrapper's help and local OSV-compatible query paths on each
    Python version in `action-compatibility.json`.
 4. CycloneDX, OpenVEX, and CSAF generation against controlled local fixtures.
+   Compatible packages must produce a valid execution report in each lane; the
+   CycloneDX lane also binds every convenience output to that report and the
+   generated document.
 5. The exact PyPI release named by `action-compatibility.json`. On every
    declared Python version, CI resolves the wheel under isolated pip settings,
    rejects it when PyPI marks it as yanked, and verifies its PyPI SHA-256.
    Released-package E2E jobs install that uploaded wheel instead of resolving
    the package a second time.
-6. Dependency review on pull requests and OpenSSF Scorecard.
+6. Generation with the released pre-report package named by the compatibility
+   fixture. The fixture pins the wheel filename and SHA-256. CI rejects a
+   yanked or mismatched artifact, verifies the downloaded bytes, then requires
+   the document to succeed with all report outputs empty.
+7. Dependency review on pull requests and OpenSSF Scorecard.
 
 The query jobs use a loopback service. Artifact jobs use offline findings. No
 compatibility check sends package URLs or SBOM inventory to the public OSV API.

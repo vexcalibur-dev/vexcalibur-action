@@ -57,6 +57,7 @@ jobs:
         run: mkdir -p "$RUNNER_TEMP/vexcalibur"
 
       - name: Generate VEX
+        id: vexcalibur
         uses: vexcalibur-dev/vexcalibur-action@REPLACE_WITH_ACTION_SHA
         with:
           package-spec: REPLACE_WITH_VEXCALIBUR_PACKAGE_SPEC
@@ -70,21 +71,31 @@ jobs:
             ${{ runner.temp }}/vexcalibur/cyclonedx-vex.json
 
       - name: Validate VEX
+        env:
+          EXPECTED_BYTES: ${{ steps.vexcalibur.outputs.document-bytes }}
+          EXPECTED_SHA256: ${{ steps.vexcalibur.outputs.document-sha256 }}
         run: |
           python - <<'PY'
+          import hashlib
           import json
           import os
           from pathlib import Path
 
           path = Path(os.environ["RUNNER_TEMP"]) / "vexcalibur" / "cyclonedx-vex.json"
-          vex = json.loads(path.read_text(encoding="utf-8"))
+          document = path.read_bytes()
+          if len(document) != int(os.environ["EXPECTED_BYTES"]):
+              raise SystemExit("VEX byte count does not match the Action report")
+          if hashlib.sha256(document).hexdigest() != os.environ["EXPECTED_SHA256"]:
+              raise SystemExit("VEX digest does not match the Action report")
+
+          vex = json.loads(document)
           if vex.get("bomFormat") != "CycloneDX":
               raise SystemExit("unexpected CycloneDX bomFormat")
           if vex.get("specVersion") != "1.6":
               raise SystemExit("unexpected CycloneDX specVersion")
           if not isinstance(vex.get("vulnerabilities", []), list):
               raise SystemExit("CycloneDX vulnerabilities must be a list")
-          print(f"validated {path}")
+          print("validated generated CycloneDX VEX")
           PY
 
       - name: Upload VEX
@@ -108,10 +119,15 @@ Open **Actions**, select **Generate VEX**, and choose **Run workflow**.
 The run is successful when:
 
 1. The **Generate VEX** step exits with status `0`.
-2. The **Validate VEX** step prints a `validated` message.
+2. The **Validate VEX** step confirms the Action's digest and byte count, then
+   prints a `validated` message.
 3. The run summary contains a `cyclonedx-vex` artifact with `cyclonedx-vex.json`.
 
 Download the artifact and review its findings before using it as a security assertion. Vexcalibur preserves the analysis state and detail supplied by the local findings file.
+
+The `finding-count` Action output is generation metadata, not a security result.
+A zero count means only that the selected source returned no normalized
+findings for that operation.
 
 ## Use a private OSV-compatible service
 

@@ -9,10 +9,15 @@ The deterministic property suite is a required pull-request check. A separate At
 The shared decoder in `tests/fuzz/wrapper_boundary.py` turns at most 65,536 bytes into these inputs:
 
 - `package-spec` and `allow-development-package-spec`;
-- an absent, valid, missing, or relative constraints path; and
-- an unset or newline-delimited `args` value.
+- an absent, valid, missing, or relative constraints path;
+- an unset or newline-delimited `args` value; and
+- a pre-report package or a schema-version-1 package that writes a valid,
+  missing, or malformed report.
 
-The harness starts `scripts/run-vexcalibur.sh` with an explicit minimal environment. Local fakes record JSON argument arrays at the setup-Python, virtual-environment, pip, and Vexcalibur boundaries.
+The harness starts `scripts/run-vexcalibur.sh` with an explicit minimal
+environment. Local fakes record JSON argument arrays at the setup-Python,
+virtual-environment, pip, capability-checker, report-path, publisher, and
+Vexcalibur boundaries.
 
 The setup fake records its argument vector and then replaces itself with the real isolated Python interpreter, which executes the wrapper's exact inline directory-creation program. The virtual-environment, pip, and Vexcalibur fakes simulate only their local side effects.
 
@@ -22,6 +27,9 @@ The reference model then verifies:
 - one literal pip argument for the package and one for the constraints path;
 - one CLI argument per nonblank line, with exactly one trailing carriage return removed;
 - literal spaces, quotes, metacharacters, glob characters, redirection characters, and Unicode;
+- report capability probing, managed argument insertion, and reserved report
+  argument rejection;
+- publication of a valid report and rejection of a missing or malformed report;
 - isolation from caller `PATH`, `BASH_ENV`, `ENV`, `PYTHON*`, `PIP_*`, `PIPX_*`, and Vexcalibur executable overrides; and
 - creation of the managed environment directly below `RUNNER_TEMP`.
 
@@ -86,7 +94,11 @@ The decoder preserves valid UTF-8. Because POSIX environment variables cannot co
 
 Committed seeds live in `tests/fuzz/corpus/wrapper/`. `tests/fuzz/corpus-manifest.json` names every seed and locks its expected success state and CLI argument array. Seeds must remain small, synthetic, and free of private repository names, private package inventory, credentials, and production paths.
 
-Keep a seed only when it represents a distinct boundary such as carriage-return and line-feed handling, blank lines, literal metacharacters, Unicode, package policy, or a constraints state. Do not commit bulk generated corpus entries. The manifest test rejects an undocumented seed and any seed larger than 1,024 bytes or containing NUL.
+Keep a seed only when it represents a distinct boundary such as
+carriage-return and line-feed handling, blank lines, literal metacharacters,
+Unicode, package policy, a constraints state, or one of the report states. Do
+not commit bulk generated corpus entries. The manifest test rejects an
+undocumented seed and any seed larger than 1,024 bytes or containing NUL.
 
 When a campaign finds a failure:
 

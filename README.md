@@ -82,7 +82,13 @@ The action selects Python and creates a private virtual environment under `RUNNE
 
 The CLI runs from the action's private temporary directory, not from your repository. Use absolute paths such as `${{ github.workspace }}/sbom.json` for inputs and `${{ runner.temp }}/vex.json` for outputs.
 
-See the [action reference](docs/reference/action.md) for every input, path and argument rules, installation isolation, output behavior, and failure codes.
+A compatible `generate` command also exposes the package version, normalized
+component and finding counts, analysis-state counts, output format, and exact
+document digest through Action outputs. These values describe the generation
+operation; they don't decide whether the inventory is safe. Older Vexcalibur
+packages and other commands leave the outputs empty.
+
+See the [action reference](docs/reference/action.md) for every input, path and argument rules, structured output contract, installation isolation, and failure codes.
 
 ## Documentation
 

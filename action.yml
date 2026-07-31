@@ -32,6 +32,49 @@ inputs:
     required: false
     default: "--help"
 
+outputs:
+  execution-report:
+    description: >-
+      Validated, minified report after successful schema-v1 generation;
+      otherwise unset.
+    value: ${{ steps.run-vexcalibur.outputs.execution-report }}
+  execution-report-path:
+    description: >-
+      Path to the validated report after successful schema-v1 generation;
+      otherwise unset.
+    value: ${{ steps.run-vexcalibur.outputs.execution-report-path }}
+  vexcalibur-version:
+    description: >-
+      Package version after successful schema-v1 generation; otherwise unset.
+    value: ${{ steps.run-vexcalibur.outputs.vexcalibur-version }}
+  component-count:
+    description: >-
+      Normalized component count after successful schema-v1 generation;
+      otherwise unset.
+    value: ${{ steps.run-vexcalibur.outputs.component-count }}
+  finding-count:
+    description: >-
+      Normalized finding count after successful schema-v1 generation;
+      otherwise unset.
+    value: ${{ steps.run-vexcalibur.outputs.finding-count }}
+  analysis-state-counts:
+    description: >-
+      Minified JSON text with analysis-state counts after successful schema-v1
+      generation; otherwise unset.
+    value: ${{ steps.run-vexcalibur.outputs.analysis-state-counts }}
+  output-format:
+    description: >-
+      Document format after successful schema-v1 generation; otherwise unset.
+    value: ${{ steps.run-vexcalibur.outputs.output-format }}
+  document-sha256:
+    description: >-
+      Document SHA-256 after successful schema-v1 generation; otherwise unset.
+    value: ${{ steps.run-vexcalibur.outputs.document-sha256 }}
+  document-bytes:
+    description: >-
+      Document byte size after successful schema-v1 generation; otherwise unset.
+    value: ${{ steps.run-vexcalibur.outputs.document-bytes }}
+
 runs:
   using: composite
   steps:
@@ -43,6 +86,7 @@ runs:
         python-version: ${{ inputs.python-version }}
 
     - name: Run Vexcalibur
+      id: run-vexcalibur
       shell: /bin/bash --noprofile --norc -e -o pipefail {0}
       working-directory: ${{ runner.temp }}
       env:

@@ -1,0 +1,7 @@
+VAF1
+81
+vexcalibur==1.2.3
+<<<ARGS>>>
+generate
+/tmp/input.json
+--offline

@@ -29,6 +29,7 @@ runs:
       run: mkdir -p "$RUNNER_TEMP/vexcalibur-openvex"
 
     - name: Generate OpenVEX from local findings
+      id: vexcalibur
       uses: ./
       with:
         package-spec: ${{ inputs.package-spec }}
@@ -54,17 +55,43 @@ runs:
     - name: Validate OpenVEX
       shell: bash
       env:
+        ANALYSIS_STATE_COUNTS: >-
+          ${{ steps.vexcalibur.outputs.analysis-state-counts }}
+        COMPONENT_COUNT: ${{ steps.vexcalibur.outputs.component-count }}
+        DOCUMENT_BYTES: ${{ steps.vexcalibur.outputs.document-bytes }}
+        DOCUMENT_SHA256: ${{ steps.vexcalibur.outputs.document-sha256 }}
+        EXECUTION_REPORT: ${{ steps.vexcalibur.outputs.execution-report }}
+        FINDING_COUNT: ${{ steps.vexcalibur.outputs.finding-count }}
+        OUTPUT_FORMAT: ${{ steps.vexcalibur.outputs.output-format }}
         EXPECTED_OPENVEX_PATH: ${{ inputs.expected-path }}
       run: |
         python - <<'PY'
         from collections import Counter
         from pathlib import Path
         import difflib
+        import hashlib
         import json
         import os
 
         artifact = Path(os.environ["RUNNER_TEMP"]) / "vexcalibur-openvex" / "openvex.json"
-        document = json.loads(artifact.read_text(encoding="utf-8"))
+        document_bytes = artifact.read_bytes()
+        document = json.loads(document_bytes)
+        report = json.loads(os.environ["EXECUTION_REPORT"])
+        assert report["output_format"] == "openvex", report
+        assert os.environ["OUTPUT_FORMAT"] == "openvex"
+        assert report["component_count"] == 2, report
+        assert os.environ["COMPONENT_COUNT"] == "2"
+        assert report["finding_count"] == 5, report
+        assert os.environ["FINDING_COUNT"] == "5"
+        assert json.loads(os.environ["ANALYSIS_STATE_COUNTS"]) == {
+            "exploitable": 1,
+            "false_positive": 1,
+            "in_triage": 1,
+            "not_affected": 1,
+            "resolved": 1,
+        }, report
+        assert int(os.environ["DOCUMENT_BYTES"]) == len(document_bytes)
+        assert os.environ["DOCUMENT_SHA256"] == hashlib.sha256(document_bytes).hexdigest()
 
         expected_path_value = os.environ["EXPECTED_OPENVEX_PATH"].strip()
         if expected_path_value:

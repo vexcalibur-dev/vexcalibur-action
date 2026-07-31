@@ -311,6 +311,106 @@ class DependencyLockTests(unittest.TestCase):
         self.assertEqual(manifest.returncode, 0, manifest.stderr)
 
 
+class CiCompatibilityBoundaryTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.workflow = load_workflow(CI_WORKFLOW_PATH)
+        cls.job = cls.workflow["jobs"]["pre-report-package-generate"]
+
+    def test_pre_report_wheel_is_verified_before_execution(self) -> None:
+        steps = self.job["steps"]
+        step_names = [step["name"] for step in steps]
+        expected_order = (
+            "Read pre-report compatibility fixture",
+            "Resolve declared compatibility artifact",
+            "Verify and download compatibility wheel",
+            "Generate with a released pre-report package",
+        )
+        indexes = [step_names.index(name) for name in expected_order]
+        self.assertEqual(indexes, sorted(indexes))
+
+        fixture = json.loads(
+            (
+                ROOT
+                / "tests"
+                / "fixtures"
+                / "compatibility"
+                / "pre-execution-report.json"
+            ).read_text(encoding="utf-8")
+        )
+        self.assertEqual(
+            set(fixture),
+            {
+                "artifact_filename",
+                "artifact_sha256_parts",
+                "package_spec",
+                "python_version",
+            },
+        )
+        digest_parts = fixture["artifact_sha256_parts"]
+        self.assertEqual(len(digest_parts), 8)
+        self.assertTrue(
+            all(re.fullmatch(r"[0-9a-f]{8}", part) for part in digest_parts)
+        )
+        self.assertRegex("".join(digest_parts), r"^[0-9a-f]{64}$")
+
+        resolver = step_named(self.job, "Resolve declared compatibility artifact")
+        resolver_script = resolver["run"]
+        for required in (
+            "--dry-run",
+            "--no-deps",
+            "--only-binary=:all:",
+            "https://pypi.org/pypi/vexcalibur/${PACKAGE_VERSION}/json",
+            "verify-package-artifact",
+        ):
+            with self.subTest(required=required):
+                self.assertIn(required, resolver_script)
+
+        verifier = step_named(self.job, "Verify and download compatibility wheel")
+        verifier_script = verifier["run"]
+        self.assertEqual(
+            verifier["env"]["EXPECTED_FILENAME"],
+            "${{ steps.compatibility.outputs.artifact_filename }}",
+        )
+        self.assertEqual(
+            verifier["env"]["EXPECTED_SHA256"],
+            "${{ steps.compatibility.outputs.artifact_sha256 }}",
+        )
+        self.assertLess(
+            verifier_script.index('test "${ACTUAL_FILENAME}" = "${EXPECTED_FILENAME}"'),
+            verifier_script.index("curl"),
+        )
+        self.assertLess(
+            verifier_script.index("sha256sum --check --strict"),
+            verifier_script.index("wheel_path="),
+        )
+
+        generator = step_named(self.job, "Generate with a released pre-report package")
+        self.assertEqual(
+            generator["with"]["package-spec"],
+            "${{ steps.compatibility-wheel.outputs.wheel_path }}",
+        )
+        self.assertEqual(generator["with"]["allow-development-package-spec"], "true")
+
+    def test_pre_report_job_asserts_every_output_is_empty(self) -> None:
+        validation = step_named(self.job, "Validate backward-compatible behavior")
+        expected_environment = {
+            "ANALYSIS_STATE_COUNTS",
+            "COMPONENT_COUNT",
+            "DOCUMENT_BYTES",
+            "DOCUMENT_SHA256",
+            "EXECUTION_REPORT",
+            "EXECUTION_REPORT_PATH",
+            "FINDING_COUNT",
+            "OUTPUT_FORMAT",
+            "VEXCALIBUR_VERSION",
+        }
+        self.assertEqual(set(validation["env"]), expected_environment)
+        for name in expected_environment:
+            with self.subTest(output=name):
+                self.assertIn(f'test -z "${name}"', validation["run"])
+
+
 class ReleaseWorkflowBoundaryTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:

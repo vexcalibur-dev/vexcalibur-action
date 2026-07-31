@@ -269,6 +269,7 @@ jobs:
         run: mkdir -p "$RUNNER_TEMP/vexcalibur-action-artifacts"
 
       - name: Generate VEX from XML SBOM
+        id: vexcalibur
         uses: ./
         with:
           package-spec: ${{ steps.wheel.outputs.wheel-path }}
@@ -285,20 +286,51 @@ jobs:
             ${{ runner.temp }}/vexcalibur-action-artifacts/cyclonedx-vex.xml-input.json
 
       - name: Validate generated artifact
+        env:
+          ANALYSIS_STATE_COUNTS: >-
+            ${{ steps.vexcalibur.outputs.analysis-state-counts }}
+          COMPONENT_COUNT: ${{ steps.vexcalibur.outputs.component-count }}
+          DOCUMENT_BYTES: ${{ steps.vexcalibur.outputs.document-bytes }}
+          DOCUMENT_SHA256: ${{ steps.vexcalibur.outputs.document-sha256 }}
+          EXECUTION_REPORT: ${{ steps.vexcalibur.outputs.execution-report }}
+          EXECUTION_REPORT_PATH: >-
+            ${{ steps.vexcalibur.outputs.execution-report-path }}
+          FINDING_COUNT: ${{ steps.vexcalibur.outputs.finding-count }}
+          OUTPUT_FORMAT: ${{ steps.vexcalibur.outputs.output-format }}
+          VEXCALIBUR_VERSION: >-
+            ${{ steps.vexcalibur.outputs.vexcalibur-version }}
         run: |
           python - <<'PY'
-          from pathlib import Path
           import difflib
+          import hashlib
           import json
           import os
+          from pathlib import Path
 
-          artifact = Path(os.environ["RUNNER_TEMP"]) / "vexcalibur-action-artifacts" / "cyclonedx-vex.xml-input.json"
-          payload = json.loads(artifact.read_text(encoding="utf-8"))
-          expected_path = Path(os.environ["RUNNER_TEMP"]) / "vexcalibur-contract" / "cyclonedx-vex-all-analysis-states.json"
+          artifact = (
+              Path(os.environ["RUNNER_TEMP"])
+              / "vexcalibur-action-artifacts"
+              / "cyclonedx-vex.xml-input.json"
+          )
+          document = artifact.read_bytes()
+          payload = json.loads(document)
+          expected_path = (
+              Path(os.environ["RUNNER_TEMP"])
+              / "vexcalibur-contract"
+              / "cyclonedx-vex-all-analysis-states.json"
+          )
           expected = json.loads(expected_path.read_text(encoding="utf-8"))
           if payload != expected:
-              actual_text = json.dumps(payload, indent=2, sort_keys=True).splitlines()
-              expected_text = json.dumps(expected, indent=2, sort_keys=True).splitlines()
+              actual_text = json.dumps(
+                  payload,
+                  indent=2,
+                  sort_keys=True,
+              ).splitlines()
+              expected_text = json.dumps(
+                  expected,
+                  indent=2,
+                  sort_keys=True,
+              ).splitlines()
               diff = "\n".join(
                   difflib.unified_diff(
                       expected_text,
@@ -308,7 +340,57 @@ jobs:
                       lineterm="",
                   )
               )
-              raise SystemExit(f"Generated VEX did not match the golden fixture:\n{diff}")
+              raise SystemExit(
+                  "Generated VEX did not match the golden fixture:"
+                  f"\n{diff}"
+              )
+
+          report = json.loads(os.environ["EXECUTION_REPORT"])
+          report_path = Path(os.environ["EXECUTION_REPORT_PATH"])
+          if json.loads(report_path.read_text(encoding="utf-8")) != report:
+              raise SystemExit(
+                  "execution-report-path content differs from execution-report"
+              )
+
+          expected_states = {
+              "exploitable": 1,
+              "false_positive": 1,
+              "in_triage": 1,
+              "not_affected": 1,
+              "resolved": 1,
+          }
+          if (
+              report["component_count"] != 2
+              or os.environ["COMPONENT_COUNT"] != "2"
+          ):
+              raise SystemExit("unexpected component count")
+          if (
+              report["finding_count"] != 5
+              or os.environ["FINDING_COUNT"] != "5"
+          ):
+              raise SystemExit("unexpected finding count")
+          if report["analysis_state_counts"] != expected_states:
+              raise SystemExit("unexpected execution report analysis-state counts")
+          if json.loads(os.environ["ANALYSIS_STATE_COUNTS"]) != expected_states:
+              raise SystemExit("unexpected analysis-state-counts output")
+          if report["output_format"] != "cyclonedx":
+              raise SystemExit("unexpected execution report output format")
+          if os.environ["OUTPUT_FORMAT"] != "cyclonedx":
+              raise SystemExit("unexpected output-format output")
+          if report["vexcalibur_version"] != os.environ["VEXCALIBUR_VERSION"]:
+              raise SystemExit("Vexcalibur version outputs disagree")
+
+          expected_bytes = len(document)
+          expected_digest = hashlib.sha256(document).hexdigest()
+          if report["document"] != {
+              "bytes": expected_bytes,
+              "sha256": expected_digest,
+          }:
+              raise SystemExit("execution report document metadata is incorrect")
+          if os.environ["DOCUMENT_BYTES"] != str(expected_bytes):
+              raise SystemExit("document-bytes output is incorrect")
+          if os.environ["DOCUMENT_SHA256"] != expected_digest:
+              raise SystemExit("document-sha256 output is incorrect")
           PY
 
       - name: Upload generated VEX
@@ -600,6 +682,183 @@ jobs:
           expected-generator-version: ${{ needs.resolve-released-package.outputs.version }}
           artifact-name: ${{ env.VEXCALIBUR_CSAF_RELEASE_ARTIFACT }}-python-${{ matrix.python-version }}
 
+  pre-report-package-generate:
+    name: Pre-report package E2E generate
+    runs-on: ubuntu-latest
+    needs: [quality]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Read pre-report compatibility fixture
+        id: compatibility
+        run: |
+          python - <<'PY' >> "$GITHUB_OUTPUT"
+          from pathlib import Path
+          import json
+          import re
+
+          path = Path("tests/fixtures/compatibility/pre-execution-report.json")
+          document = json.loads(path.read_text(encoding="utf-8"))
+          if set(document) != {
+              "artifact_filename",
+              "artifact_sha256_parts",
+              "package_spec",
+              "python_version",
+          }:
+              raise SystemExit("unexpected pre-report compatibility fields")
+          package_spec = document["package_spec"]
+          if re.fullmatch(r"vexcalibur==[0-9]+\.[0-9]+\.[0-9]+", package_spec) is None:
+              raise SystemExit("pre-report package spec must name an exact release")
+          package_version = package_spec.partition("==")[2]
+          python_version = document["python_version"]
+          if re.fullmatch(r"[0-9]+\.[0-9]+", python_version) is None:
+              raise SystemExit("pre-report Python version must be major.minor")
+          artifact_filename = document["artifact_filename"]
+          if artifact_filename != f"vexcalibur-{package_version}-py3-none-any.whl":
+              raise SystemExit("unexpected pre-report wheel filename")
+          sha256_parts = document["artifact_sha256_parts"]
+          if (
+              not isinstance(sha256_parts, list)
+              or len(sha256_parts) != 8
+              or any(
+                  not isinstance(part, str)
+                  or re.fullmatch(r"[0-9a-f]{8}", part) is None
+                  for part in sha256_parts
+              )
+          ):
+              raise SystemExit("pre-report wheel digest parts are invalid")
+          artifact_sha256 = "".join(sha256_parts)
+          if re.fullmatch(r"[0-9a-f]{64}", artifact_sha256) is None:
+              raise SystemExit("pre-report wheel digest must be lowercase SHA-256")
+          print(f"artifact_filename={artifact_filename}")
+          print(f"artifact_sha256={artifact_sha256}")
+          print(f"package_spec={package_spec}")
+          print(f"package_version={package_version}")
+          print(f"python_version={python_version}")
+          PY
+
+      - name: Set up compatibility Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.14.5"
+
+      - name: Resolve declared compatibility artifact
+        id: artifact
+        env:
+          PACKAGE_SPEC: ${{ steps.compatibility.outputs.package_spec }}
+          PACKAGE_VERSION: ${{ steps.compatibility.outputs.package_version }}
+          PIP_CONFIG_FILE: /dev/null
+        run: |
+          set -euo pipefail
+
+          pip_report="${RUNNER_TEMP}/vexcalibur-pre-report-pip.json"
+          pypi_release="${RUNNER_TEMP}/vexcalibur-pre-report-pypi.json"
+          python -I -m pip \
+            --isolated \
+            --no-cache-dir \
+            install \
+            --disable-pip-version-check \
+            --dry-run \
+            --ignore-installed \
+            --no-input \
+            --no-deps \
+            --only-binary=:all: \
+            --report "${pip_report}" \
+            -- "${PACKAGE_SPEC}"
+          curl \
+            --fail \
+            --location \
+            --max-time 30 \
+            --proto '=https' \
+            --show-error \
+            --silent \
+            --output "${pypi_release}" \
+            "https://pypi.org/pypi/vexcalibur/${PACKAGE_VERSION}/json"
+          scripts/release.py verify-package-artifact \
+            --pip-report "${pip_report}" \
+            --pypi-release "${pypi_release}" \
+            --package-spec "${PACKAGE_SPEC}" >> "${GITHUB_OUTPUT}"
+
+      - name: Verify and download compatibility wheel
+        id: compatibility-wheel
+        env:
+          ACTUAL_FILENAME: ${{ steps.artifact.outputs.artifact_filename }}
+          ACTUAL_SHA256: ${{ steps.artifact.outputs.artifact_sha256 }}
+          ARTIFACT_URL: ${{ steps.artifact.outputs.artifact_url }}
+          EXPECTED_FILENAME: >-
+            ${{ steps.compatibility.outputs.artifact_filename }}
+          EXPECTED_SHA256: ${{ steps.compatibility.outputs.artifact_sha256 }}
+        run: |
+          set -euo pipefail
+
+          test "${ACTUAL_FILENAME}" = "${EXPECTED_FILENAME}"
+          test "${ACTUAL_SHA256}" = "${EXPECTED_SHA256}"
+          artifact_dir="${RUNNER_TEMP}/vexcalibur-pre-report-package"
+          artifact_path="${artifact_dir}/${ACTUAL_FILENAME}"
+          mkdir -p "${artifact_dir}"
+          curl \
+            --fail \
+            --location \
+            --max-time 60 \
+            --proto '=https' \
+            --proto-redir '=https' \
+            --show-error \
+            --silent \
+            --output "${artifact_path}" \
+            "${ARTIFACT_URL}"
+          printf '%s  %s\n' "${EXPECTED_SHA256}" "${artifact_path}" \
+            | sha256sum --check --strict -
+          printf 'wheel_path=%s\n' "${artifact_path}" >> "${GITHUB_OUTPUT}"
+
+      - name: Prepare output directory
+        run: mkdir -p "$RUNNER_TEMP/vexcalibur-pre-report"
+
+      - name: Generate with a released pre-report package
+        id: vexcalibur
+        uses: ./
+        with:
+          package-spec: ${{ steps.compatibility-wheel.outputs.wheel_path }}
+          allow-development-package-spec: "true"
+          python-version: ${{ steps.compatibility.outputs.python_version }}
+          args: |
+            generate
+            ${{ github.workspace }}/tests/fixtures/sbom/cyclonedx-xml-1.5-simple.xml
+            --offline
+            --findings-file
+            ${{ github.workspace }}/tests/fixtures/findings/all-analysis-states.json
+            --timestamp
+            2026-06-23T00:00:00Z
+            --output
+            ${{ runner.temp }}/vexcalibur-pre-report/vex.json
+
+      - name: Validate backward-compatible behavior
+        env:
+          ANALYSIS_STATE_COUNTS: >-
+            ${{ steps.vexcalibur.outputs.analysis-state-counts }}
+          COMPONENT_COUNT: ${{ steps.vexcalibur.outputs.component-count }}
+          DOCUMENT_BYTES: ${{ steps.vexcalibur.outputs.document-bytes }}
+          DOCUMENT_SHA256: ${{ steps.vexcalibur.outputs.document-sha256 }}
+          EXECUTION_REPORT: ${{ steps.vexcalibur.outputs.execution-report }}
+          EXECUTION_REPORT_PATH: >-
+            ${{ steps.vexcalibur.outputs.execution-report-path }}
+          FINDING_COUNT: ${{ steps.vexcalibur.outputs.finding-count }}
+          OUTPUT_FORMAT: ${{ steps.vexcalibur.outputs.output-format }}
+          VEXCALIBUR_VERSION: ${{ steps.vexcalibur.outputs.vexcalibur-version }}
+        run: |
+          test -s "$RUNNER_TEMP/vexcalibur-pre-report/vex.json"
+          test -z "$ANALYSIS_STATE_COUNTS"
+          test -z "$COMPONENT_COUNT"
+          test -z "$DOCUMENT_BYTES"
+          test -z "$DOCUMENT_SHA256"
+          test -z "$EXECUTION_REPORT"
+          test -z "$EXECUTION_REPORT_PATH"
+          test -z "$FINDING_COUNT"
+          test -z "$OUTPUT_FORMAT"
+          test -z "$VEXCALIBUR_VERSION"
+
   dependency-review:
     name: Dependency Review
     runs-on: ubuntu-latest
@@ -655,6 +914,7 @@ jobs:
       - released-package-query-osv
       - released-package-openvex
       - released-package-csaf
+      - pre-report-package-generate
       - dependency-review
       - scorecard
     if: always()
@@ -695,6 +955,7 @@ jobs:
           check_required_job "Released package E2E query-osv" "${{ needs.released-package-query-osv.result }}"
           check_required_job "Released package E2E OpenVEX" "${{ needs.released-package-openvex.result }}"
           check_required_job "Released package E2E CSAF" "${{ needs.released-package-csaf.result }}"
+          check_required_job "Pre-report package E2E generate" "${{ needs.pre-report-package-generate.result }}"
 
           if [[ "${{ github.event_name }}" == "pull_request" ]]; then
             check_required_job "Dependency Review" "${{ needs.dependency-review.result }}"

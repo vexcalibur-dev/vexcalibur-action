@@ -77,6 +77,7 @@ class WrapperBoundaryPropertyTests(unittest.TestCase):
             constraints_kind=1,
             args_present=True,
             raw_args="generate\n--output\n/tmp/result with spaces.json\r\n",
+            report_kind=3,
         )
 
         self.assertEqual(decode_case(encode_seed(case)), case)

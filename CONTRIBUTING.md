@@ -189,6 +189,12 @@ the planner back into a lower layer.
 The test suites divide responsibility this way:
 
 - `tests/test_run_vexcalibur.py` covers action inputs, path handling, environment isolation, package installation, and argument forwarding.
+- `tests/test_run_vexcalibur_execution_report.py` covers wrapper report
+  orchestration, help handling, and fail-closed behavior.
+- `tests/test_check_execution_report_support.py` covers public schema-marker
+  detection and unsupported-package behavior.
+- `tests/test_publish_execution_report.py` covers report parsing, validation,
+  log-safe diagnostics, and GitHub output publication.
 - `tests/test_release_state.py` covers automatic planning, final-footer parsing,
   deterministic notes, graph validation, and recovery metadata.
 - `tests/test_release_tags.py` covers append-only remote publication, graph
@@ -215,6 +221,11 @@ reject it if PyPI marks the selected file as yanked, verify its published
 SHA-256, and pass the downloaded wheel to the released-package E2E jobs. None
 of these checks sends inventory to public OSV.
 
+A separate E2E job resolves the released pre-report wheel pinned by
+`tests/fixtures/compatibility/pre-execution-report.json`. It rejects a yanked
+or mismatched artifact, verifies the downloaded SHA-256, then checks that
+generation succeeds and leaves every report output unset.
+
 The required wrapper fuzz smoke uses deterministic Hypothesis examples. The weekly Atheris job is bounded and offline after dependency setup. See [Fuzz the Action wrapper](docs/how-to/fuzz-action-wrapper.md) for limits, corpus rules, local reproduction, and private triage.
 
 ## Make a focused change
@@ -224,6 +235,12 @@ Keep the public contract in `action.yml` small. A new Vexcalibur command-line in
 When you change behavior:
 
 - Update `tests/test_run_vexcalibur.py` for installation, input, environment, or argument changes.
+- Update `tests/test_run_vexcalibur_execution_report.py` for wrapper report
+  orchestration, help, or report failure behavior.
+- Update `tests/test_check_execution_report_support.py` when report capability
+  detection changes.
+- Update `tests/test_publish_execution_report.py` when report validation or
+  GitHub output publication changes.
 - Update `tests/test_release_state.py` for release classification, planning,
   notes, tag reconciliation, or recovery changes.
 - Update `tests/test_action_contract.py` for a public `action.yml` contract

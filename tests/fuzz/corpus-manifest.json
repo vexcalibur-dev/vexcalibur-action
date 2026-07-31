@@ -42,8 +42,32 @@
     "success": true,
     "cli_args": ["--help"]
   },
+  "generate-help-after-input.seed": {
+    "success": true,
+    "cli_args": ["generate", "/tmp/input.json", "--help"]
+  },
+  "generate-flag-help.seed": {
+    "success": true,
+    "cli_args": ["generate", "/tmp/input.json", "--offline", "--help"]
+  },
+  "leading-generate.seed": {
+    "success": true,
+    "cli_args": ["--", "generate", "/tmp/input.json", "--offline"]
+  },
   "rejected-package.seed": {
     "success": false,
     "cli_args": ["--help"]
+  },
+  "report-malformed.seed": {
+    "success": false,
+    "cli_args": ["generate", "/tmp/input.json", "--offline"]
+  },
+  "report-missing.seed": {
+    "success": false,
+    "cli_args": ["generate", "/tmp/input.json", "--offline"]
+  },
+  "report-valid.seed": {
+    "success": true,
+    "cli_args": ["generate", "/tmp/input.json", "--offline"]
   }
 }

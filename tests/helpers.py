@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import shlex
 import stat
@@ -80,6 +81,7 @@ def managed_install_env(
     fake_bin.mkdir()
     fake_python = write_fake_python(fake_bin, vexcalibur_calls_file, python_calls_file)
     return {
+        "GITHUB_ACTION_PATH": str(REPO_ROOT),
         "PATH": f"{fake_bin}{os.pathsep}{os.environ['PATH']}",
         "RUNNER_TEMP": str(root / "runner-temp"),
         "VEXCALIBUR_PACKAGE_SPEC": package_spec,
@@ -100,6 +102,55 @@ def read_commands(python_calls_file: Path) -> list[str]:
         for line in python_calls_file.read_text().splitlines()
         if line.startswith("COMMAND=")
     ]
+
+
+def read_github_outputs(output_file: Path) -> dict[str, str]:
+    lines = output_file.read_text(encoding="utf-8").splitlines()
+    outputs = {}
+    index = 0
+    while index < len(lines):
+        name, delimiter = lines[index].split("<<", 1)
+        index += 1
+        value_lines = []
+        while index < len(lines) and lines[index] != delimiter:
+            value_lines.append(lines[index])
+            index += 1
+        if index == len(lines):
+            raise AssertionError(f"missing output delimiter: {delimiter}")
+        if name in outputs:
+            raise AssertionError(f"duplicate output: {name}")
+        outputs[name] = "\n".join(value_lines)
+        index += 1
+    return outputs
+
+
+def execution_report(
+    *,
+    component_count: int = 2,
+    finding_count: int = 2,
+) -> str:
+    return (
+        json.dumps(
+            {
+                "schema_version": 1,
+                "command": "generate",
+                "vexcalibur_version": "0.4.2",
+                "inventory_source": "sbom_file",
+                "finding_source": "local_file",
+                "output_format": "cyclonedx",
+                "component_count": component_count,
+                "finding_count": finding_count,
+                "analysis_state_counts": {"resolved": finding_count},
+                "document": {
+                    "sha256": "a" * 64,
+                    "bytes": 1234,
+                },
+            },
+            separators=(",", ":"),
+            sort_keys=True,
+        )
+        + "\n"
+    )
 
 
 def read_command_env(python_calls_file: Path, command: str) -> dict[str, str]:
@@ -169,6 +220,11 @@ def write_fake_python(
             "import sys",
             f"calls = Path({str(vexcalibur_calls_file)!r})",
             "calls.write_text('\\n'.join(sys.argv[1:]) + '\\n')",
+            "if '--execution-report' in sys.argv[1:]:",
+            "    report_index = sys.argv.index('--execution-report') + 1",
+            "    report_text = os.environ.get('FAKE_VEXCALIBUR_EXECUTION_REPORT')",
+            "    if report_text is not None:",
+            "        Path(sys.argv[report_index]).write_text(report_text, encoding='utf-8')",
             f"python_calls = Path({str(python_calls_file)!r})",
             "with python_calls.open('a', encoding='utf-8') as stream:",
             "    stream.write(f\"VEXCALIBUR_PYTHONHOME={os.environ.get('PYTHONHOME', '')}\\n\")",
@@ -188,6 +244,7 @@ def write_fake_python(
             "    stream.write(f\"VEXCALIBUR_ACTION_ARGS={os.environ.get('VEXCALIBUR_ARGS', '')}\\n\")",
             "    stream.write(f\"VEXCALIBUR_LOWERCASE_PURLS={os.environ.get('purls', '')}\\n\")",
             "    stream.write(f\"VEXCALIBUR_LOWERCASE_ARGS={os.environ.get('args', '')}\\n\")",
+            "sys.exit(int(os.environ.get('FAKE_VEXCALIBUR_COMMAND_EXIT', '0')))",
             "",
         ]
     )
@@ -203,6 +260,13 @@ def write_fake_python(
                 f"python_calls = Path({str(python_calls_file)!r})",
                 "raw_args = sys.argv[1:]",
                 "args = raw_args[1:] if raw_args[:1] == ['-I'] else raw_args",
+                "if args[:1] and args[0].endswith('/publish-execution-report.py'):",
+                "    os.execv(sys.executable, [sys.executable, *args])",
+                "if args[:1] and args[0].endswith('/check-execution-report-support.py'):",
+                "    schema = os.environ.get('FAKE_VEXCALIBUR_EXECUTION_REPORT_SCHEMA')",
+                "    if schema is None:",
+                "        sys.exit(1)",
+                "    sys.exit(0 if schema == '1' else 2)",
                 "logged_command = ' '.join(raw_args).replace('\\n', '\\\\n')",
                 "with python_calls.open('a', encoding='utf-8') as stream:",
                 '    stream.write(f"COMMAND={logged_command}\\n")',
@@ -223,6 +287,11 @@ def write_fake_python(
                 "    stream.write(f\"VEXCALIBUR_ACTION_ARGS={os.environ.get('VEXCALIBUR_ARGS', '')}\\n\")",
                 "    stream.write(f\"LOWERCASE_PURLS={os.environ.get('purls', '')}\\n\")",
                 "    stream.write(f\"LOWERCASE_ARGS={os.environ.get('args', '')}\\n\")",
+                "if args[:1] == ['-c'] and 'prefix=\"report.\"' in args[1]:",
+                "    report_root = Path(raw_args[-1])",
+                "    report_dir = Path(tempfile.mkdtemp(prefix='report.', dir=report_root))",
+                "    print(report_dir / 'execution-report.json')",
+                "    sys.exit(0)",
                 "if args[:1] == ['-c']:",
                 "    runner_temp = Path(raw_args[-1])",
                 "    runner_temp.mkdir(parents=True, exist_ok=True)",
