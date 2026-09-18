@@ -1,0 +1,171 @@
+name: SPDX 3 E2E
+description: Generate and validate SPDX 3.0.1 VEX with local fixtures.
+
+inputs:
+  package-spec:
+    description: Package spec passed through to the Vexcalibur Action.
+    required: true
+  allow-development-package-spec:
+    description: Whether the Vexcalibur Action should allow a development package spec.
+    required: false
+    default: "false"
+  python-version:
+    description: Python version passed through to the Vexcalibur Action.
+    required: false
+    default: "3.14"
+  artifact-name:
+    description: Name for the uploaded SPDX 3 artifact.
+    required: true
+  expected-package-version:
+    description: Exact package version selected by the verified artifact resolver.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Prepare output directory
+      shell: bash
+      run: mkdir -p "$RUNNER_TEMP/vexcalibur-spdx3"
+
+    - name: Generate SPDX 3 from local findings
+      id: vexcalibur
+      uses: ./
+      with:
+        package-spec: ${{ inputs.package-spec }}
+        allow-development-package-spec: ${{ inputs.allow-development-package-spec }}
+        python-version: ${{ inputs.python-version }}
+        args: |
+          generate
+          ${{ github.workspace }}/tests/fixtures/sbom/cyclonedx-xml-1.5-simple.xml
+          --offline
+          --findings-file
+          ${{ github.workspace }}/tests/fixtures/findings/all-analysis-states.json
+          --format
+          spdx3
+          --creator
+          Vexcalibur Test Maintainers
+          --timestamp
+          2026-06-23T00:00:00Z
+          --output
+          ${{ runner.temp }}/vexcalibur-spdx3/vex.spdx3.json
+
+    - name: Validate SPDX 3
+      shell: bash
+      env:
+        ANALYSIS_STATE_COUNTS: >-
+          ${{ steps.vexcalibur.outputs.analysis-state-counts }}
+        COMPONENT_COUNT: ${{ steps.vexcalibur.outputs.component-count }}
+        DOCUMENT_BYTES: ${{ steps.vexcalibur.outputs.document-bytes }}
+        DOCUMENT_SHA256: ${{ steps.vexcalibur.outputs.document-sha256 }}
+        EXECUTION_REPORT: ${{ steps.vexcalibur.outputs.execution-report }}
+        EXECUTION_REPORT_PATH: >-
+          ${{ steps.vexcalibur.outputs.execution-report-path }}
+        EXPECTED_PACKAGE_VERSION: ${{ inputs.expected-package-version }}
+        VEXCALIBUR_VERSION: ${{ steps.vexcalibur.outputs.vexcalibur-version }}
+        FINDING_COUNT: ${{ steps.vexcalibur.outputs.finding-count }}
+        OUTPUT_FORMAT: ${{ steps.vexcalibur.outputs.output-format }}
+      run: |
+        python - <<'PY'
+        from collections import Counter
+        from pathlib import Path
+        import hashlib
+        import json
+        import os
+
+        artifact = Path(os.environ["RUNNER_TEMP"]) / "vexcalibur-spdx3" / "vex.spdx3.json"
+        document_bytes = artifact.read_bytes()
+        document = json.loads(document_bytes)
+        report = json.loads(os.environ["EXECUTION_REPORT"])
+        report_bytes = Path(os.environ["EXECUTION_REPORT_PATH"]).read_bytes()
+        assert report_bytes == (os.environ["EXECUTION_REPORT"] + "\n").encode("ascii")
+        (artifact.parent / "execution-report.json").write_bytes(report_bytes)
+        digest = hashlib.sha256(document_bytes).hexdigest()
+
+        assert report["schema_version"] == 1, report
+        assert report["vexcalibur_version"] == os.environ["EXPECTED_PACKAGE_VERSION"], report
+        assert os.environ["VEXCALIBUR_VERSION"] == os.environ["EXPECTED_PACKAGE_VERSION"]
+        assert report["inventory_source"] == "sbom_file", report
+        assert report["finding_source"] == "local_file", report
+        assert report["output_format"] == "spdx3", report
+        assert os.environ["OUTPUT_FORMAT"] == "spdx3"
+        assert report["component_count"] == 2, report
+        assert os.environ["COMPONENT_COUNT"] == "2"
+        assert report["finding_count"] == 5, report
+        assert os.environ["FINDING_COUNT"] == "5"
+        expected_states = {
+            "exploitable": 1,
+            "false_positive": 1,
+            "in_triage": 1,
+            "not_affected": 1,
+            "resolved": 1,
+        }
+        assert report["analysis_state_counts"] == expected_states, report
+        assert json.loads(os.environ["ANALYSIS_STATE_COUNTS"]) == expected_states
+        assert report["document"] == {"bytes": len(document_bytes), "sha256": digest}
+        assert os.environ["DOCUMENT_BYTES"] == str(len(document_bytes))
+        assert os.environ["DOCUMENT_SHA256"] == digest
+
+        assert document["@context"] == "https://spdx.org/rdf/3.0.1/spdx-context.jsonld"
+        graph = document["@graph"]
+        creation_infos = [element for element in graph if element.get("type") == "CreationInfo"]
+        assert len(creation_infos) == 1, creation_infos
+        assert creation_infos[0]["specVersion"] == "3.0.1", creation_infos
+        assert creation_infos[0]["created"] == "2026-06-23T00:00:00Z", creation_infos
+
+        package_ids = {
+            element["spdxId"] for element in graph if element.get("type") == "software_Package"
+        }
+        assert {
+            element["software_packageUrl"]
+            for element in graph if element.get("type") == "software_Package"
+        } == {"pkg:pypi/django@1.2", "pkg:npm/minimist@0.0.8"}
+        vulnerability_ids = {
+            element["spdxId"]
+            for element in graph
+            if element.get("type") == "security_Vulnerability"
+        }
+        relationships = [
+            element
+            for element in graph
+            if str(element.get("type", "")).endswith("VulnAssessmentRelationship")
+        ]
+        assert Counter(
+            (relationship["type"], relationship["relationshipType"])
+            for relationship in relationships
+        ) == {
+            ("security_VexFixedVulnAssessmentRelationship", "fixedIn"): 1,
+            ("security_VexAffectedVulnAssessmentRelationship", "affects"): 1,
+            (
+                "security_VexUnderInvestigationVulnAssessmentRelationship",
+                "underInvestigationFor",
+            ): 1,
+            ("security_VexNotAffectedVulnAssessmentRelationship", "doesNotAffect"): 2,
+        }, relationships
+        for relationship in relationships:
+            assert relationship["from"] in vulnerability_ids, relationship
+            assert set(relationship["to"]) <= package_ids and relationship["to"], relationship
+
+        affected = next(
+            relationship
+            for relationship in relationships
+            if relationship["type"] == "security_VexAffectedVulnAssessmentRelationship"
+        )
+        assert affected["security_actionStatement"] == "Upgrade minimist to version 1.2.8 or later."
+        fixed = next(
+            relationship
+            for relationship in relationships
+            if relationship["type"] == "security_VexFixedVulnAssessmentRelationship"
+        )
+        assert "Confirmed fixed product version: 1.2" in fixed["security_statusNotes"]
+
+        print(f"validated {artifact}")
+        PY
+
+    - name: Upload SPDX 3
+      if: always()
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      with:
+        name: ${{ inputs.artifact-name }}
+        path: ${{ runner.temp }}/vexcalibur-spdx3/*.json
+        retention-days: 1
+        if-no-files-found: warn

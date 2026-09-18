@@ -111,6 +111,19 @@ class ActionCompatibilityTests(unittest.TestCase):
             'scripts/release.py manifest --ref "${GITHUB_SHA}" >> "${GITHUB_OUTPUT}"',
         )
 
+    def test_spdx3_e2e_retains_reports_for_one_day_and_checks_bytes(self) -> None:
+        action = yaml.safe_load(
+            (ROOT / ".github/actions/spdx3-e2e/action.yml").read_text(encoding="utf-8")
+        )
+        steps = action["runs"]["steps"]
+        upload = next(step for step in steps if step["name"] == "Upload SPDX 3")
+        self.assertEqual(upload["with"]["retention-days"], 1)
+        validation = next(step for step in steps if step["name"] == "Validate SPDX 3")
+        self.assertIn(
+            'assert report_bytes == (os.environ["EXECUTION_REPORT"] + "\\n").encode("ascii")',
+            validation["run"],
+        )
+
     def test_commit_reader_rejects_a_symlinked_manifest(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             repository = Path(directory)
@@ -231,6 +244,7 @@ class ActionCompatibilityTests(unittest.TestCase):
             "released-package-query-osv",
             "released-package-openvex",
             "released-package-csaf",
+            "released-package-spdx3",
         ):
             with self.subTest(job=job_name):
                 job = workflow["jobs"][job_name]
@@ -249,6 +263,17 @@ class ActionCompatibilityTests(unittest.TestCase):
                     "${{ env.VEXCALIBUR_RELEASE_PACKAGE_ARTIFACT }}-python-"
                     "${{ matrix.python-version }}",
                 )
+
+        ci_job = workflow["jobs"]["ci"]
+        self.assertIn("released-package-spdx3", ci_job["needs"])
+        required_jobs_step = next(
+            step for step in ci_job["steps"] if step["name"] == "Check required jobs"
+        )
+        self.assertIn(
+            'check_required_job "Released package E2E SPDX 3" '
+            '"${{ needs.released-package-spdx3.result }}"',
+            required_jobs_step["run"],
+        )
 
 
 if __name__ == "__main__":

@@ -174,7 +174,7 @@ validation.
 | Field | Type | Constraint | Meaning |
 | --- | --- | --- | --- |
 | `vexcalibur_package` | String | One exact `vexcalibur==VERSION` requirement with three numeric components and optional PEP 440 pre-release, post-release, development, or local suffixes | Package exercised by released-package CI. |
-| `python_versions` | Array of strings | Nonempty, unique, ascending Python 3 `major.minor` values | Python versions used by the released-package help and local OSV-compatible query matrix. |
+| `python_versions` | Array of strings | Nonempty, unique, ascending Python 3 `major.minor` values | Python versions used by the released-package E2E matrix. |
 
 The file itself contains no action release identity. Its raw SHA-256 digest is
 stored in both the annotated tag and the GitHub Release notes. The tag also
@@ -248,7 +248,7 @@ The required `CI result` job aggregates these checks:
 2. A wheel built from the Vexcalibur repository's `main` branch.
 3. The candidate wrapper's help and local OSV-compatible query paths on each
    Python version in `action-compatibility.json`.
-4. CycloneDX, OpenVEX, and CSAF generation against controlled local fixtures.
+4. CycloneDX, OpenVEX, CSAF, and SPDX 3 generation against controlled local fixtures.
    Compatible packages must produce a valid execution report in each lane; the
    CycloneDX lane also binds every convenience output to that report and the
    generated document.

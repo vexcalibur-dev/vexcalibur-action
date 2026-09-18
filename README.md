@@ -10,7 +10,9 @@ Vexcalibur Action runs the [Vexcalibur command-line interface (CLI)](https://git
 Each release created by the current workflow snapshots the tested Vexcalibur
 package and Python versions in `action-compatibility.json`.
 
-Current continuous integration (CI) exercises the wrapper on `ubuntu-latest`. It verifies CycloneDX 1.6, OpenVEX 0.2.0, and CSAF 2.0 VEX output with local fixtures.
+Current continuous integration (CI) exercises the wrapper on `ubuntu-latest`.
+It verifies CycloneDX 1.6, OpenVEX 0.2.0, CSAF 2.0, and SPDX 3.0.1 VEX output
+with local fixtures.
 
 ## Try the action
 

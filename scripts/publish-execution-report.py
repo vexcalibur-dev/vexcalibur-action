@@ -39,7 +39,7 @@ ANALYSIS_STATES = (
 )
 INVENTORY_SOURCES = {"sbom_file", "github_dependency_graph", "custom"}
 FINDING_SOURCES = {"local_file", "public_osv", "custom_osv", "custom"}
-OUTPUT_FORMATS = {"cyclonedx", "openvex", "csaf", "custom"}
+OUTPUT_FORMATS = {"cyclonedx", "openvex", "csaf", "spdx3", "custom"}
 VERSION_PATTERN = re.compile(r"^[0-9A-Za-z][0-9A-Za-z.!+_-]{0,127}$")
 SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 OUTPUT_NAMES = (

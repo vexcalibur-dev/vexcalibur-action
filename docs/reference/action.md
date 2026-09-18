@@ -186,7 +186,7 @@ minified JSON text; the counts and byte size contain base-10 digits.
 | `component-count` | Decimal count of normalized components sent to the finding source. |
 | `finding-count` | Decimal count of normalized findings sent to the renderer. |
 | `analysis-state-counts` | Minified JSON object containing positive counts for states that occurred. |
-| `output-format` | `cyclonedx`, `openvex`, `csaf`, or `custom`. |
+| `output-format` | `cyclonedx`, `openvex`, `csaf`, `spdx3`, or `custom`. |
 | `document-sha256` | Lowercase SHA-256 digest of the exact generated document bytes. |
 | `document-bytes` | Decimal size of the exact generated document in UTF-8 bytes. |
 

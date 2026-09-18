@@ -111,6 +111,7 @@ class PublishExecutionReportTests(unittest.TestCase):
             ("sbom_file", "local_file", "cyclonedx"),
             ("github_dependency_graph", "public_osv", "openvex"),
             ("sbom_file", "custom_osv", "csaf"),
+            ("sbom_file", "local_file", "spdx3"),
             ("custom", "custom", "custom"),
         )
         for inventory_source, finding_source, output_format in cases:
@@ -187,6 +188,7 @@ class PublishExecutionReportTests(unittest.TestCase):
             },
             {"inventory_source": ["sbom_file"]},
             {"output_format": "html"},
+            {"output_format": "spdx4"},
             {"analysis_state_counts": {"resolved": 0, "exploitable": 2}},
             {"analysis_state_counts": {"unknown": 2}},
             {"document": {"sha256": "A" * 64, "bytes": 1234}},

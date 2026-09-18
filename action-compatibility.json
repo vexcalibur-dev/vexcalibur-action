@@ -3,5 +3,5 @@
     "3.10",
     "3.14"
   ],
-  "vexcalibur_package": "vexcalibur==0.6.0"
+  "vexcalibur_package": "vexcalibur==0.8.2"
 }
