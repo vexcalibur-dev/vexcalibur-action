@@ -1,5 +1,5 @@
 ---
-name: Vexcalibur
+name: vexcalibur-action
 description: >-
   Install a selected Vexcalibur package and run its CLI in a GitHub Actions
   workflow.
