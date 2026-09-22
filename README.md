@@ -7,6 +7,12 @@
 
 Vexcalibur Action runs the [Vexcalibur command-line interface (CLI)](https://github.com/vexcalibur-dev/vexcalibur) in a GitHub Actions workflow. Use it to generate Vulnerability Exploitability eXchange (VEX) from a software bill of materials (SBOM), query a service that implements the Open Source Vulnerabilities (OSV) API, or run another Vexcalibur command without maintaining a separate installation step.
 
+[Documentation](#documentation) |
+[Quickstart](#try-the-action) |
+[Action reference](docs/reference/action.md) |
+[Marketplace](https://github.com/marketplace/actions/vexcalibur-action) |
+[Releases](https://github.com/vexcalibur-dev/vexcalibur-action/releases)
+
 Each release created by the current workflow snapshots the tested Vexcalibur
 package and Python versions in `action-compatibility.json`.
 
