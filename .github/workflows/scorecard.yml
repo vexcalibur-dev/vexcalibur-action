@@ -16,7 +16,6 @@ jobs:
       actions: read
       checks: read
       contents: read
-      id-token: write
       issues: read
       pull-requests: read
       security-events: write
